@@ -1,7 +1,7 @@
 import { log } from "./logger.js";
-import { runDailyPost } from "./jobs/dailyPost.js";
-import { runReplyMentions } from "./jobs/replyMentions.js";
-import { runCollectMetrics } from "./jobs/collectMetrics.js";
+import { runDailyPost } from "./dailyPost.js";
+import { runReplyMentions } from "./replyMentions.js";
+import { runCollectMetrics } from "./collectMetrics.js";
 
 async function main() {
   const mode = process.env.MODE || "daily";
