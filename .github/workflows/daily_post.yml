@@ -1,0 +1,40 @@
+name: Daily Post
+
+on:
+  schedule:
+    - cron: "0 9 * * *" # каждый день в 09:00 UTC
+  workflow_dispatch:
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install deps
+        run: npm install
+
+      - name: Run daily post
+        env:
+          MODE: daily
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          X_API_KEY: ${{ secrets.X_API_KEY }}
+          X_API_SECRET: ${{ secrets.X_API_SECRET }}
+          X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
+          X_ACCESS_SECRET: ${{ secrets.X_ACCESS_SECRET }}
+        run: npm run dev
+
+      - name: Commit memory (persist evolution)
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add data/memory.json || true
+          git commit -m "Update memory" || echo "No changes to commit"
+          git push
