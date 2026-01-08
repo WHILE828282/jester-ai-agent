@@ -1,8 +1,8 @@
-name: Daily Post
+name: Reply Mentions
 
 on:
   schedule:
-    - cron: "0 12 * * *"
+    - cron: "*/10 * * * *"
   workflow_dispatch:
 
 permissions:
@@ -23,7 +23,7 @@ jobs:
       - name: Install deps
         run: npm install
       - name: Run
-        run: MODE=daily npm run dev
+        run: MODE=reply npm run dev
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           GROQ_MODEL: ${{ secrets.GROQ_MODEL }}
