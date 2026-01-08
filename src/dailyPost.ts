@@ -1,9 +1,9 @@
-import { MemoryStore } from "../memory/memoryStore.js";
-import { generateTweet } from "../llm/generator.js";
-import { validateOutput } from "../humor/guardrails.js";
-import { postTweet } from "../x/poster.js";
-import { log } from "../logger.js";
-import { normalizeWhitespace } from "../utils/text.js";
+import { MemoryStore } from "./memoryStore.js";
+import { generateTweet } from "./generator.js";
+import { validateOutput } from "./guardrails.js";
+import { postTweet } from "./poster.js";
+import { log } from "./logger.js";
+import { normalizeWhitespace } from "./text.js";
 
 function pickTopic(): { topic: string; context: string } {
   const topics = [
