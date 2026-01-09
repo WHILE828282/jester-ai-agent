@@ -2,7 +2,7 @@ name: Collect Metrics + Evolve Humor
 
 on:
   schedule:
-    - cron: "0 * * * *"    # каждый час
+    - cron: "0 * * * *"   # каждый час
   workflow_dispatch:
 
 permissions:
@@ -26,33 +26,34 @@ jobs:
       - name: Install deps
         run: npm install
 
-      - name: Run collect metrics (retry 10x every 60s)
+      - name: Run metrics (try #1, then retry after 5 min)
         env:
-          MODE: metrics
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           GROQ_MODEL: ${{ secrets.GROQ_MODEL }}
-
           X_APP_KEY: ${{ secrets.X_APP_KEY }}
           X_APP_SECRET: ${{ secrets.X_APP_SECRET }}
           X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
           X_ACCESS_SECRET: ${{ secrets.X_ACCESS_SECRET }}
-
           BOT_NAME: ${{ secrets.BOT_NAME }}
           BOT_HANDLE: ${{ secrets.BOT_HANDLE }}
         run: |
-          for i in {1..10}; do
-            echo "Attempt $i/10..."
-            MODE=metrics npm run dev && exit 0
-            echo "Failed attempt $i. Sleeping 60 seconds..."
-            sleep 60
-          done
-          echo "All 10 attempts failed. Waiting until next scheduled run."
-          exit 0
+          echo "Attempt 1/2..."
+          MODE=metrics npm run dev && exit 0
+
+          echo "Attempt 1 failed. Sleeping 5 minutes..."
+          sleep 300
+
+          echo "Attempt 2/2..."
+          MODE=metrics npm run dev && exit 0
+
+          echo "Both attempts failed. Exiting with error."
+          exit 1
 
       - name: Commit memory
+        if: always()
         run: |
           git config user.name "jester-bot"
           git config user.email "jester-bot@users.noreply.github.com"
           git add data/memory.json
           git commit -m "chore: update memory" || echo "No changes to commit"
-          git push
+          git push || echo "Nothing to push"
