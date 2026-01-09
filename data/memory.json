@@ -24,8 +24,28 @@
       "created_at": "2026-01-09T13:07:49.277Z"
     }
   ],
-  "patterns": [],
+  "patterns": [
+    {
+      "kind": "success",
+      "text": "Short punchy jokes perform better",
+      "score": 1,
+      "ts": "2026-01-09T13:35:26.874Z"
+    },
+    {
+      "kind": "avoid",
+      "text": "Overly long tweets reduce engagement",
+      "score": 1,
+      "ts": "2026-01-09T13:35:26.873Z"
+    },
+    {
+      "kind": "success",
+      "text": "Short punchy jokes perform better",
+      "score": 1,
+      "ts": "2026-01-09T13:35:26.873Z"
+    }
+  ],
   "state": {
-    "last_mention_id": "2009573236426842492"
+    "last_mention_id": "2009573236426842492",
+    "last_metrics_run": "2026-01-09T13:35:26.875Z"
   }
 }
