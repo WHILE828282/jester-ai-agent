@@ -1,4 +1,4 @@
-# Jester (Ribbit) — Autonomous Mascot Engine
+# 🤡Jester (Ribbit) — Autonomous Mascot Engine
 
 A **high-tempo memecoin mascot system** built for X.  
 Jester is a red frog jester with a savage voice: crude, shameless, disrespectful, and relentlessly entertaining — optimized for the style that actually performs on meme timelines.
