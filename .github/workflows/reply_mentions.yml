@@ -1,8 +1,8 @@
-name: Reply Mentions
+name: Collect Metrics + Evolve Humor
 
 on:
   schedule:
-    - cron: "*/10 * * * *"
+    - cron: "0 * * * *"    # каждый час
   workflow_dispatch:
 
 permissions:
@@ -26,9 +26,9 @@ jobs:
       - name: Install deps
         run: npm install
 
-      - name: Run reply mentions (retry 10x every 60s)
+      - name: Run collect metrics (retry 10x every 60s)
         env:
-          MODE: reply
+          MODE: metrics
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           GROQ_MODEL: ${{ secrets.GROQ_MODEL }}
 
@@ -42,7 +42,7 @@ jobs:
         run: |
           for i in {1..10}; do
             echo "Attempt $i/10..."
-            MODE=reply npm run dev && exit 0
+            MODE=metrics npm run dev && exit 0
             echo "Failed attempt $i. Sleeping 60 seconds..."
             sleep 60
           done
