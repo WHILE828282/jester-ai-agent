@@ -54,6 +54,36 @@
   ],
   "patterns": [
     {
+      "kind": "success",
+      "text": "Short punchy jokes perform better",
+      "score": 1,
+      "ts": "2026-01-09T16:58:01.357Z"
+    },
+    {
+      "kind": "success",
+      "text": "Short punchy jokes perform better",
+      "score": 1,
+      "ts": "2026-01-09T16:58:01.357Z"
+    },
+    {
+      "kind": "avoid",
+      "text": "Overly long tweets reduce engagement",
+      "score": 1,
+      "ts": "2026-01-09T16:58:01.357Z"
+    },
+    {
+      "kind": "success",
+      "text": "Short punchy jokes perform better",
+      "score": 1,
+      "ts": "2026-01-09T16:58:01.357Z"
+    },
+    {
+      "kind": "success",
+      "text": "Short punchy jokes perform better",
+      "score": 1,
+      "ts": "2026-01-09T16:58:01.357Z"
+    },
+    {
       "kind": "avoid",
       "text": "Overly long tweets reduce engagement",
       "score": 1,
@@ -164,6 +194,6 @@
   ],
   "state": {
     "last_mention_id": "2009630848518152671",
-    "last_metrics_run": "2026-01-09T16:22:34.669Z"
+    "last_metrics_run": "2026-01-09T16:58:01.358Z"
   }
 }
