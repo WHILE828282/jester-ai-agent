@@ -1,13 +1,19 @@
-name: Daily Post (every 25 min)
+name: Post Every 30 Minutes
 
 on:
-  schedule:
-    - cron: "*/25 * * * *"
   workflow_dispatch:
+  schedule:
+    - cron: "*/30 * * * *"   # каждые 30 минут
+
+concurrency:
+  group: post-every-30
+  cancel-in-progress: true
 
 jobs:
   run:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
@@ -15,26 +21,21 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: 20
+          cache: npm
 
       - name: Install deps
-        run: npm install
+        run: npm ci
 
-      - name: Run daily post
+      - name: Build
+        run: npm run build
+
+      - name: Run post mode
         env:
           MODE: daily
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-          GROQ_MODEL: ${{ secrets.GROQ_MODEL }}
-
-          # если вдруг код еще читает OPENAI_API_KEY
-          OPENAI_API_KEY: ${{ secrets.GROQ_API_KEY }}
-
-          X_APP_KEY: ${{ secrets.X_APP_KEY }}
-          X_APP_SECRET: ${{ secrets.X_APP_SECRET }}
+          X_API_KEY: ${{ secrets.X_API_KEY }}
+          X_API_SECRET: ${{ secrets.X_API_SECRET }}
           X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
-          X_ACCESS_SECRET: ${{ secrets.X_ACCESS_SECRET }}
-
-          BOT_NAME: ${{ secrets.BOT_NAME }}
-          BOT_HANDLE: ${{ secrets.BOT_HANDLE }}
-
-        run: npm run dev
+          X_ACCESS_TOKEN_SECRET: ${{ secrets.X_ACCESS_TOKEN_SECRET }}
+        run: npm run start
