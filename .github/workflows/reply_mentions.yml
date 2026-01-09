@@ -1,18 +1,18 @@
-name: Reply Mentions
+name: Reply Mentions (All)
 
 on:
   workflow_dispatch:
   schedule:
-    - cron: "*/15 * * * *" # каждые 15 минут (можно поменять на */30)
+    - cron: "*/5 * * * *"   # каждые 5 минут (можешь поставить */10)
 
 concurrency:
-  group: reply-mentions
+  group: reply-mentions-all
   cancel-in-progress: true
 
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
 
     steps:
       - name: Checkout repo
@@ -30,9 +30,10 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Run reply mentions (with retry/backoff)
+      - name: Run reply mode (with backoff)
         env:
           MODE: reply
+          MENTIONS_LIMIT: "100"   # ⚠️ хотим обрабатывать много (ниже скажу что поправить в коде)
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           X_API_KEY: ${{ secrets.X_API_KEY }}
           X_API_SECRET: ${{ secrets.X_API_SECRET }}
@@ -42,18 +43,18 @@ jobs:
           set -e
           echo "Running reply mentions..."
           
-          # Retry with exponential backoff on failure (including 429)
           max_attempts=4
           attempt=1
-          
+
           while [ $attempt -le $max_attempts ]; do
             echo "Attempt $attempt/$max_attempts..."
             if npm run start; then
               echo "✅ Success"
               exit 0
             fi
-            
-            wait=$(( 2 ** attempt * 20 ))  # 40s, 80s, 160s, 320s
+
+            # exponential backoff: 40s, 80s, 160s, 320s
+            wait=$(( 2 ** attempt * 20 ))
             echo "❌ Failed. Sleeping ${wait}s before retry..."
             sleep $wait
             attempt=$((attempt+1))
