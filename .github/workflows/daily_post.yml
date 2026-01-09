@@ -26,9 +26,6 @@ jobs:
       - name: Install deps
         run: npm install
 
-      - name: Build
-        run: npm run build
-
       - name: Run post mode
         env:
           MODE: daily
@@ -37,4 +34,4 @@ jobs:
           X_API_SECRET: ${{ secrets.X_API_SECRET }}
           X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
           X_ACCESS_TOKEN_SECRET: ${{ secrets.X_ACCESS_TOKEN_SECRET }}
-        run: npm run start
+        run: npx tsx src/index.ts
