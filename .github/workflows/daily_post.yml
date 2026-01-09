@@ -1,22 +1,16 @@
-name: Daily Post
+name: Daily Post (every 25 min)
 
 on:
   schedule:
-    - cron: "*/30 * * * *"   # каждый час
+    - cron: "*/25 * * * *"
   workflow_dispatch:
-
-permissions:
-  contents: write
 
 jobs:
   run:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
-        with:
-          persist-credentials: true
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -26,34 +20,21 @@ jobs:
       - name: Install deps
         run: npm install
 
-      - name: Run daily post (try #1, then retry after 5 min)
+      - name: Run daily post
         env:
+          MODE: daily
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           GROQ_MODEL: ${{ secrets.GROQ_MODEL }}
+
+          # если вдруг код еще читает OPENAI_API_KEY
+          OPENAI_API_KEY: ${{ secrets.GROQ_API_KEY }}
+
           X_APP_KEY: ${{ secrets.X_APP_KEY }}
           X_APP_SECRET: ${{ secrets.X_APP_SECRET }}
           X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
           X_ACCESS_SECRET: ${{ secrets.X_ACCESS_SECRET }}
+
           BOT_NAME: ${{ secrets.BOT_NAME }}
           BOT_HANDLE: ${{ secrets.BOT_HANDLE }}
-        run: |
-          echo "Attempt 1/2..."
-          MODE=daily npm run dev && exit 0
 
-          echo "Attempt 1 failed. Sleeping 5 minutes..."
-          sleep 300
-
-          echo "Attempt 2/2..."
-          MODE=daily npm run dev && exit 0
-
-          echo "Both attempts failed. Exiting with error."
-          exit 1
-
-      - name: Commit memory
-        if: always()
-        run: |
-          git config user.name "jester-bot"
-          git config user.email "jester-bot@users.noreply.github.com"
-          git add data/memory.json
-          git commit -m "chore: update memory" || echo "No changes to commit"
-          git push || echo "Nothing to push"
+        run: npm run dev
