@@ -1,12 +1,9 @@
 name: Daily Post
 
 on:
-  workflow_dispatch:
   schedule:
-    - cron: "*/30 * * * *"
-
-permissions:
-  contents: write
+    - cron: "*/30 * * * *"   # каждые 30 минут
+  workflow_dispatch:
 
 jobs:
   run:
@@ -15,8 +12,6 @@ jobs:
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
-        with:
-          persist-credentials: true
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -26,22 +21,25 @@ jobs:
       - name: Install deps
         run: npm install
 
-      - name: Run daily post
-        run: MODE=daily npm run dev
+      - name: Run daily post (retry 10x every 60s)
         env:
+          MODE: daily
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           GROQ_MODEL: ${{ secrets.GROQ_MODEL }}
+
           X_APP_KEY: ${{ secrets.X_APP_KEY }}
           X_APP_SECRET: ${{ secrets.X_APP_SECRET }}
           X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
           X_ACCESS_SECRET: ${{ secrets.X_ACCESS_SECRET }}
+
           BOT_NAME: ${{ secrets.BOT_NAME }}
           BOT_HANDLE: ${{ secrets.BOT_HANDLE }}
-
-      - name: Commit memory
         run: |
-          git config user.name "jester-bot"
-          git config user.email "jester-bot@users.noreply.github.com"
-          git add data/memory.json
-          git commit -m "chore: update memory" || echo "No changes to commit"
-          git push
+          for i in {1..10}; do
+            echo "Attempt $i/10..."
+            MODE=daily npm run dev && exit 0
+            echo "Failed attempt $i. Sleeping 60 seconds..."
+            sleep 60
+          done
+          echo "All 10 attempts failed. Waiting until next scheduled run."
+          exit 0
