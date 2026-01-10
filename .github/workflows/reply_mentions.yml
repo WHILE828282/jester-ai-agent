@@ -1,13 +1,13 @@
-name: Collect & Improve
+name: Reply Mentions (8B)
 
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 */6 * * *"   # каждые 6 часов
+    - cron: "*/10 * * * *"   # reply каждые 10 минут (рекомендую так)
 
 concurrency:
-  group: collect-metrics
-  cancel-in-progress: true
+  group: jester-agent-global
+  cancel-in-progress: false
 
 jobs:
   run:
@@ -22,41 +22,24 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
 
       - name: Install deps
-        run: npm ci
+        run: npm install
 
-      - name: Build
-        run: npm run build
-
-      - name: Run collect mode (with retry/backoff)
+      - name: Run reply mentions (8B)
         env:
-          MODE: metrics
+          MODE: reply
+
+          # ✅ Reply на 8B
+          GROQ_MODEL: llama-3.1-8b-instant
+
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-          X_API_KEY: ${{ secrets.X_API_KEY }}
-          X_API_SECRET: ${{ secrets.X_API_SECRET }}
+          X_APP_KEY: ${{ secrets.X_APP_KEY }}
+          X_APP_SECRET: ${{ secrets.X_APP_SECRET }}
           X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
-          X_ACCESS_TOKEN_SECRET: ${{ secrets.X_ACCESS_TOKEN_SECRET }}
-        run: |
-          set -e
-          echo "Running collect & improve..."
+          X_ACCESS_SECRET: ${{ secrets.X_ACCESS_SECRET }}
 
-          max_attempts=3
-          attempt=1
+          # (опционально) сколько mentions за один запуск
+          MAX_REPLIES_PER_RUN: "20"
 
-          while [ $attempt -le $max_attempts ]; do
-            echo "Attempt $attempt/$max_attempts..."
-            if npm run start; then
-              echo "✅ Success"
-              exit 0
-            fi
-
-            wait=$(( 2 ** attempt * 30 ))  # 60s, 120s, 240s
-            echo "❌ Failed. Sleeping ${wait}s before retry..."
-            sleep $wait
-            attempt=$((attempt+1))
-          done
-
-          echo "❌ All attempts failed."
-          exit 1
+        run: npx tsx src/index.ts
