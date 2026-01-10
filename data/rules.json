@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "updated_at": "2026-01-11T00:00:00Z",
+  "rules": [
+    {
+      "id": "NO_APOLOGIES",
+      "title": "No apologies",
+      "description": "Never apologize or say sorry",
+      "active": true
+    },
+    {
+      "id": "ENDS_WITH_RIBBIT",
+      "title": "End with ribbit",
+      "description": "Every output ends with 'ribbit.'",
+      "active": true
+    }
+  ]
+}
