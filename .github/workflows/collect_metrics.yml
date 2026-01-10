@@ -1,59 +1,63 @@
-name: Collect Metrics + Evolve Humor
+name: Collect & Improve Every 6 Hours
 
 on:
-  schedule:
-    - cron: "*/30 * * * *"   # каждый час
   workflow_dispatch:
+  schedule:
+    - cron: "30 */6 * * *"   # каждые 6 часов, но со смещением на 30 минут (UTC)
 
-permissions:
-  contents: write
+concurrency:
+  group: jester-agent-global
+  cancel-in-progress: false
 
 jobs:
-  run:
+  collect:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
-        with:
-          persist-credentials: true
 
-      - name: Setup Node
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: 20
 
-      - name: Install deps
+      - name: Install dependencies
         run: npm install
 
-      - name: Run metrics (try #1, then retry after 5 min)
+      - name: Run (metrics/collect)
         env:
+          MODE: metrics
+
+          # ✅ Collect на 8B (стабильнее и дешевле)
+          GROQ_MODEL: llama-3.1-8b-instant
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-          GROQ_MODEL: ${{ secrets.GROQ_MODEL }}
+
           X_APP_KEY: ${{ secrets.X_APP_KEY }}
           X_APP_SECRET: ${{ secrets.X_APP_SECRET }}
           X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
           X_ACCESS_SECRET: ${{ secrets.X_ACCESS_SECRET }}
-          BOT_NAME: ${{ secrets.BOT_NAME }}
-          BOT_HANDLE: ${{ secrets.BOT_HANDLE }}
+
         run: |
-          echo "Attempt 1/2..."
-          MODE=metrics npm run dev && exit 0
+          set -e
+          echo "Running collect/metrics..."
 
-          echo "Attempt 1 failed. Sleeping 5 minutes..."
-          sleep 300
+          max_attempts=4
+          attempt=1
 
-          echo "Attempt 2/2..."
-          MODE=metrics npm run dev && exit 0
+          while [ $attempt -le $max_attempts ]; do
+            echo "Attempt $attempt/$max_attempts..."
+            if npx tsx src/index.ts; then
+              echo "✅ Success"
+              exit 0
+            fi
 
-          echo "Both attempts failed. Exiting with error."
+            wait=$(( 2 ** attempt * 25 ))  # 50s, 100s, 200s, 400s
+            echo "❌ Failed. Sleeping ${wait}s before retry..."
+            sleep $wait
+            attempt=$((attempt+1))
+          done
+
+          echo "❌ All attempts failed."
           exit 1
-
-      - name: Commit memory
-        if: always()
-        run: |
-          git config user.name "jester-bot"
-          git config user.email "jester-bot@users.noreply.github.com"
-          git add data/memory.json
-          git commit -m "chore: update memory" || echo "No changes to commit"
-          git push || echo "Nothing to push"
