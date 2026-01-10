@@ -30,8 +30,11 @@ jobs:
         env:
           MODE: daily
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-          X_API_KEY: ${{ secrets.X_API_KEY }}
-          X_API_SECRET: ${{ secrets.X_API_SECRET }}
+
+          # ✅ ВАЖНО: имена как в config.ts
+          X_APP_KEY: ${{ secrets.X_APP_KEY }}
+          X_APP_SECRET: ${{ secrets.X_APP_SECRET }}
           X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
-          X_ACCESS_TOKEN_SECRET: ${{ secrets.X_ACCESS_TOKEN_SECRET }}
+          X_ACCESS_SECRET: ${{ secrets.X_ACCESS_SECRET }}
+
         run: npx tsx src/index.ts
