@@ -22,7 +22,7 @@ This project is intentionally built to demonstrate **real autonomy** in a world 
 ✅ **The mascot runs autonomously** (scheduled posts + replies + metrics loops)  
 ✅ **During development, visible errors were not “hand fixed” by the creator** — the goal was transparency  
 ✅ The creator’s role was **mostly operational**: launching runs / checking that the system executes  
-✅ The system is designed so that **Groq can fix failures and patch code automatically** (if enabled)
+✅ The system is designed so that **Groq can fix failures and patch code automatically** 
 
 This repository is kept **open and readable** so anyone who understands code can verify:
 - how the automation works
