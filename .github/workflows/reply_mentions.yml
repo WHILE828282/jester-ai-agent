@@ -1,4 +1,4 @@
-name: Reply Mentions (every 6h)
+name: Reply Mentions Every 6 Hours
 
 on:
   workflow_dispatch:
@@ -10,7 +10,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  run:
+  reply:
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -18,28 +18,49 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Setup Node
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
 
-      - name: Install deps
+      - name: Install dependencies
         run: npm install
 
-      - name: Run reply mode
+      - name: Run (reply)
         env:
           MODE: reply
 
-          # ✅ Reply на 8B (чтобы меньше 429 на Groq)
+          # ✅ Reply на 8B (меньше 429)
           GROQ_MODEL: llama-3.1-8b-instant
-
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+
           X_APP_KEY: ${{ secrets.X_APP_KEY }}
           X_APP_SECRET: ${{ secrets.X_APP_SECRET }}
           X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
           X_ACCESS_SECRET: ${{ secrets.X_ACCESS_SECRET }}
 
-          # ✅ Сколько ответов за 1 запуск (не ставь слишком много из-за 500 writes/month)
-          MAX_REPLIES_PER_RUN: "10"
+          # ✅ Чтобы не выбивать write cap (500/month)
+          MAX_REPLIES_PER_RUN: "8"
 
-        run: npx tsx src/index.ts
+        run: |
+          set -e
+          echo "Running reply mentions..."
+
+          max_attempts=5
+          attempt=1
+
+          while [ $attempt -le $max_attempts ]; do
+            echo "Attempt $attempt/$max_attempts..."
+            if npx tsx src/index.ts; then
+              echo "✅ Success"
+              exit 0
+            fi
+
+            wait=$(( 2 ** attempt * 20 ))  # 40s, 80s, 160s, 320s, 640s
+            echo "❌ Failed. Sleeping ${wait}s before retry..."
+            sleep $wait
+            attempt=$((attempt+1))
+          done
+
+          echo "❌ All attempts failed."
+          exit 1
