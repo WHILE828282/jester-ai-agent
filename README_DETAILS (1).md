@@ -564,3 +564,5 @@ Ignored replies:
 - off-topic: 4
 ```
 
+## 📚 More details
+➡️ Read full documentation here: [README_DETAILS.md](README_DETAILS.md)
