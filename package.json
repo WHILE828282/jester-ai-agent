@@ -7,7 +7,11 @@
   "scripts": {
     "dev": "tsx src/index.ts",
     "build": "tsc -p tsconfig.json",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+
+    "test": "node -e \"console.log('No tests configured yet'); process.exit(0)\"",
+    "agent:fix": "tsx agent/fixer.ts",
+    "agent:test": "tsx agent/runTests.ts"
   },
   "dependencies": {
     "dotenv": "^16.4.5",
