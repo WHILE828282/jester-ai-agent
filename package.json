@@ -9,7 +9,11 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
 
+    "watch": "tsx agent/watch.ts",
+    "watch:old": "tsx agent/watch.old.ts",
+
     "test": "node -e \"console.log('No tests configured yet'); process.exit(0)\"",
+
     "agent:fix": "tsx agent/fixer.ts",
     "agent:test": "tsx agent/runTests.ts"
   },
