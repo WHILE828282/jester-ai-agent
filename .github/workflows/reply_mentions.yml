@@ -1,9 +1,9 @@
-name: Reply Mentions (8B)
+name: Reply Mentions (every 6h)
 
 on:
   workflow_dispatch:
   schedule:
-    - cron: "*/10 * * * *"   # reply каждые 10 минут (рекомендую так)
+    - cron: "0 */6 * * *"   # каждые 6 часов (UTC)
 
 concurrency:
   group: jester-agent-global
@@ -26,11 +26,11 @@ jobs:
       - name: Install deps
         run: npm install
 
-      - name: Run reply mentions (8B)
+      - name: Run reply mode
         env:
           MODE: reply
 
-          # ✅ Reply на 8B
+          # ✅ Reply на 8B (чтобы меньше 429 на Groq)
           GROQ_MODEL: llama-3.1-8b-instant
 
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
@@ -39,7 +39,7 @@ jobs:
           X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
           X_ACCESS_SECRET: ${{ secrets.X_ACCESS_SECRET }}
 
-          # (опционально) сколько mentions за один запуск
-          MAX_REPLIES_PER_RUN: "20"
+          # ✅ Сколько ответов за 1 запуск (не ставь слишком много из-за 500 writes/month)
+          MAX_REPLIES_PER_RUN: "10"
 
         run: npx tsx src/index.ts
