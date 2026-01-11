@@ -12,16 +12,18 @@ export const PATHS = {
   ROOT,
   DATA_DIR,
 
+  // Верхний регистр — основной стиль
   MEMORY_FILE: join(DATA_DIR, "memory.json"),
-
-  // ✅ правила теперь строго лежат в data/rules.json
   RULES_FILE: join(DATA_DIR, "rules.json"),
-
-  // ✅ сюда можно складывать poll состояние/результаты
   POLL_SPEC_FILE: join(DATA_DIR, "pollSpec.json"),
-
-  // ✅ лог победителя/результатов (если хочешь)
   GOVERNANCE_DIR: join(DATA_DIR, "governance"),
+
+  // Низкий регистр — алиасы для обратной совместимости (если где-то использовалось)
+  dataDir: join(DATA_DIR, ""),
+  memoryFile: join(DATA_DIR, "memory.json"),
+  rulesFile: join(DATA_DIR, "rules.json"),
+  pollSpecFile: join(DATA_DIR, "pollSpec.json"),
+  governanceDir: join(DATA_DIR, "governance"),
 };
 
 // helpers
@@ -65,7 +67,7 @@ export const CONFIG = {
   },
 
   rules: {
-    // ✅ вот это поле у тебя и падало как undefined
+    // вот это поле у тебя и падало как undefined в одном из случаев
     rulesFile: env("RULES_FILE", PATHS.RULES_FILE)!,
 
     // на будущее — если захочешь добавить лимиты/режимы правил
@@ -80,4 +82,7 @@ export const CONFIG = {
     minOption: envInt("POLL_MIN_OPTION", 1),
     maxOption: envInt("POLL_MAX_OPTION", 5),
   },
+
+  // Максимум реплаев за один запуск (workflow пробрасывает MAX_REPLIES_PER_RUN)
+  MAX_REPLIES_PER_RUN: envInt("MAX_REPLIES_PER_RUN", 8),
 };
