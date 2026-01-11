@@ -4,187 +4,159 @@ import path from "node:path";
 import { PATHS, CONFIG } from "./config.js";
 
 export type Rule = {
-  id: string;                 // например "no_apologies"
-  enabled: boolean;           // true/false
-  scope: "system" | "safety" | "style" | "format";
-  text: string;               // текст правила
-  createdAt?: string;
-  updatedAt?: string;
+  id: string;          // стабильный id
+  text: string;        // текст правила
+  enabled: boolean;    // включено/выключено
+  createdAt: string;   // ISO
 };
 
-type RulesFile = {
+export type RulesFile = {
   version: number;
-  updatedAt: string;
   rules: Rule[];
 };
 
-function nowISO() {
-  return new Date().toISOString();
-}
-
-function safeReadJson(p: string): any | null {
-  try {
-    if (!fs.existsSync(p)) return null;
-    const raw = fs.readFileSync(p, "utf-8");
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
-}
-
-function ensureDataDir() {
-  if (!fs.existsSync(PATHS.DATA_DIR)) fs.mkdirSync(PATHS.DATA_DIR, { recursive: true });
+function ensureDir(p: string) {
+  fs.mkdirSync(path.dirname(p), { recursive: true });
 }
 
 function defaultRules(): RulesFile {
+  const now = new Date().toISOString();
   return {
     version: 1,
-    updatedAt: nowISO(),
     rules: [
       {
-        id: "persona_core",
+        id: "voice-core",
         enabled: true,
-        scope: "system",
+        createdAt: now,
         text:
-          "You are Jester: a rude witty American frog-jester memecoin mascot. You are savage, shameless, fast, meme-native. Never act like a polite assistant.",
-        createdAt: nowISO(),
+          "You are Jester, a rude witty American frog meme token mascot. Crude, shameless, disrespectful, relentlessly entertaining.",
       },
       {
-        id: "end_ribbit",
+        id: "format-short",
         enabled: true,
-        scope: "format",
-        text: "Always end with exactly: ribbit.",
-        createdAt: nowISO(),
+        createdAt: now,
+        text: "Keep it short. No walls of text. No corporate tone. No apologies.",
       },
       {
-        id: "no_apologies",
+        id: "end-ribbit",
         enabled: true,
-        scope: "style",
-        text: "Do not apologize. No 'sorry', no 'my bad', no remorse tone.",
-        createdAt: nowISO(),
+        createdAt: now,
+        text: "Always end the final output with exactly: ribbit.",
       },
       {
-        id: "no_corporate",
+        id: "safety-basic",
         enabled: true,
-        scope: "style",
-        text: "Avoid corporate/PR tone, avoid disclaimers, avoid 'as an AI'.",
-        createdAt: nowISO(),
-      },
-      {
-        id: "safety_basic",
-        enabled: true,
-        scope: "safety",
+        createdAt: now,
         text:
-          "No targeting protected classes. No doxxing. No threats. No sexual content involving minors. Avoid explicit violence.",
-        createdAt: nowISO(),
-      },
-      {
-        id: "short_snappy",
-        enabled: true,
-        scope: "style",
-        text: "Short punchy sentences. No walls of text.",
-        createdAt: nowISO(),
+          "Avoid targeting protected classes. Avoid doxxing. Avoid threats of violence. Avoid sexual content involving minors.",
       },
     ],
   };
 }
 
-export function loadRulesFile(): RulesFile {
-  ensureDataDir();
-
-  // 1) основной файл
-  const primary = safeReadJson(PATHS.RULES);
-  if (primary?.rules?.length) return primary as RulesFile;
-
-  // 2) fallback если кто-то случайно держит rules в src/
-  const fallback = safeReadJson(path.join(PATHS.ROOT, "src", "rules.json"));
-  if (fallback?.rules?.length) return fallback as RulesFile;
-
-  // 3) создаём дефолтный data/rules.json
-  const def = defaultRules();
-  saveRulesFile(def);
-  return def;
-}
-
-export function saveRulesFile(file: RulesFile) {
-  ensureDataDir();
-  file.updatedAt = nowISO();
-  fs.writeFileSync(PATHS.RULES, JSON.stringify(file, null, 2), "utf-8");
-}
-
-export function buildSystemPrompt(extra?: { maxChars?: number }) {
-  const rulesFile = loadRulesFile();
-  const active = rulesFile.rules.filter(r => r.enabled);
-
-  // ограничиваем активные правила (чтобы не раздувать system prompt)
-  const max = CONFIG.RULES_MAX_ACTIVE;
-  const clipped = active.slice(0, max);
-
-  const lines: string[] = [];
-  lines.push("SYSTEM RULES (obey strictly):");
-
-  for (const r of clipped) {
-    lines.push(`- [${r.scope}] ${r.text}`);
+export function loadRules(): RulesFile {
+  try {
+    if (!fs.existsSync(PATHS.rulesFile)) {
+      ensureDir(PATHS.rulesFile);
+      const base = defaultRules();
+      fs.writeFileSync(PATHS.rulesFile, JSON.stringify(base, null, 2), "utf-8");
+      return base;
+    }
+    const raw = fs.readFileSync(PATHS.rulesFile, "utf-8");
+    const parsed = JSON.parse(raw) as RulesFile;
+    if (!parsed.rules || !Array.isArray(parsed.rules)) throw new Error("Invalid rules.json structure");
+    return parsed;
+  } catch (e) {
+    // если файл повреждён — восстановим безопасный дефолт, чтобы бот не умер
+    ensureDir(PATHS.rulesFile);
+    const base = defaultRules();
+    fs.writeFileSync(PATHS.rulesFile, JSON.stringify(base, null, 2), "utf-8");
+    return base;
   }
+}
 
-  // доп. защита от слишком длинного system prompt
-  const joined = lines.join("\n");
-  const maxChars = extra?.maxChars ?? 2500;
-  return joined.length > maxChars ? joined.slice(0, maxChars) : joined;
+export function saveRules(file: RulesFile) {
+  ensureDir(PATHS.rulesFile);
+  // лимит на всякий случай
+  if (file.rules.length > CONFIG.maxRules) {
+    file.rules = file.rules.slice(0, CONFIG.maxRules);
+  }
+  fs.writeFileSync(PATHS.rulesFile, JSON.stringify(file, null, 2), "utf-8");
+}
+
+export function addRule(text: string, id?: string): Rule {
+  const file = loadRules();
+  const now = new Date().toISOString();
+  const rule: Rule = {
+    id: (id ?? `rule-${Math.random().toString(16).slice(2)}-${Date.now()}`),
+    text: text.trim(),
+    enabled: true,
+    createdAt: now,
+  };
+  file.rules.unshift(rule);
+  saveRules(file);
+  return rule;
 }
 
 /**
- * ВАЖНО: это то, что тебе нужно для “удалять правила через голосование”.
- * Твой poll-скрипт/агент может дергать эти мутации:
- *
- * - disableRuleById("no_apologies") -> правило выключено (как “удалено”)
- * - enableRuleById(...)
- * - deleteRuleById(...) -> реально удалит из файла
+ * УДАЛЕНИЕ правила = выключить (enabled=false).
+ * Это лучше чем физически удалять, чтобы история была прозрачна.
  */
-export function disableRuleById(ruleId: string): boolean {
-  const file = loadRulesFile();
+export function disableRule(ruleId: string): boolean {
+  const file = loadRules();
   const r = file.rules.find(x => x.id === ruleId);
   if (!r) return false;
   r.enabled = false;
-  r.updatedAt = nowISO();
-  saveRulesFile(file);
+  saveRules(file);
   return true;
 }
 
-export function enableRuleById(ruleId: string): boolean {
-  const file = loadRulesFile();
+export function enableRule(ruleId: string): boolean {
+  const file = loadRules();
   const r = file.rules.find(x => x.id === ruleId);
   if (!r) return false;
   r.enabled = true;
-  r.updatedAt = nowISO();
-  saveRulesFile(file);
+  saveRules(file);
   return true;
 }
 
-export function deleteRuleById(ruleId: string): boolean {
-  const file = loadRulesFile();
-  const before = file.rules.length;
-  file.rules = file.rules.filter(x => x.id !== ruleId);
-  if (file.rules.length === before) return false;
-  saveRulesFile(file);
-  return true;
+export function buildSystemPrompt(extra?: { maxChars?: number }) {
+  const file = loadRules();
+  const enabled = file.rules.filter(r => r.enabled).map(r => `- ${r.text}`);
+  const maxChars = extra?.maxChars;
+
+  const header = [
+    "SYSTEM RULES (must follow):",
+    ...enabled,
+    maxChars ? `- Hard limit: ${maxChars} characters max.` : "",
+  ].filter(Boolean);
+
+  return header.join("\n");
 }
 
-export function addRule(rule: Omit<Rule, "createdAt" | "updatedAt">): Rule {
-  const file = loadRulesFile();
-  const exists = file.rules.some(x => x.id === rule.id);
-  if (exists) {
-    // если уже есть — просто перезапишем текст/поля
-    const r = file.rules.find(x => x.id === rule.id)!;
-    r.enabled = rule.enabled;
-    r.scope = rule.scope;
-    r.text = rule.text;
-    r.updatedAt = nowISO();
-    saveRulesFile(file);
-    return r;
+/**
+ * Для голосования: "сбросить правило" = выключить его по id.
+ * Например победитель голосования: REMOVE_RULE:end-ribbit (или любой id)
+ */
+export function applyGovernanceWinner(winner: string): { ok: boolean; action?: string; details?: any } {
+  const w = winner.trim();
+
+  // Формат удаления
+  // REMOVE_RULE:<id>
+  if (w.toUpperCase().startsWith("REMOVE_RULE:")) {
+    const id = w.split(":").slice(1).join(":").trim();
+    const ok = disableRule(id);
+    return { ok, action: "REMOVE_RULE", details: { id } };
   }
-  const full: Rule = { ...rule, createdAt: nowISO(), updatedAt: nowISO() };
-  file.rules.push(full);
-  saveRulesFile(file);
-  return full;
+
+  // Формат добавления правила
+  // ADD_RULE:<text>
+  if (w.toUpperCase().startsWith("ADD_RULE:")) {
+    const text = w.split(":").slice(1).join(":").trim();
+    if (!text) return { ok: false };
+    const rule = addRule(text);
+    return { ok: true, action: "ADD_RULE", details: { rule } };
+  }
+
+  return { ok: false };
 }
