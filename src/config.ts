@@ -1,36 +1,75 @@
-import { z } from "zod";
+import "dotenv/config";
 
-const EnvSchema = z.object({
-  GROQ_API_KEY: z.string().min(1),
+function must(name: string): string {
+  const v = process.env[name];
+  if (!v || v.trim() === "") {
+    throw new Error(`Missing env var: ${name}`);
+  }
+  return v.trim();
+}
 
-  // ✅ Обновили дефолтную модель на актуальную 70B
-  GROQ_MODEL: z.string().default("llama-3.3-70b-versatile"),
+function opt(name: string, fallback: string): string {
+  const v = process.env[name];
+  return (v && v.trim() !== "") ? v.trim() : fallback;
+}
 
-  X_APP_KEY: z.string().min(1),
-  X_APP_SECRET: z.string().min(1),
-  X_ACCESS_TOKEN: z.string().min(1),
-  X_ACCESS_SECRET: z.string().min(1),
+export const CONFIG = {
+  // --- Runtime ---
+  mode: opt("MODE", "daily"),
 
-  BOT_NAME: z.string().default("Jester"),
-  BOT_HANDLE: z.string().default("@jester"),
+  // --- Groq / LLM ---
+  groq: {
+    apiKey: must("GROQ_API_KEY"),
+    model: opt("GROQ_MODEL", "llama-3.1-70b-versatile"),
+    temperature: Number(opt("GROQ_TEMPERATURE", "1.0")),
+    maxTokens: Number(opt("GROQ_MAX_TOKENS", "160")),
+  },
 
-  MAX_REPLIES_PER_RUN: z.coerce.number().default(5),
-  MAX_POSTS_IN_MEMORY: z.coerce.number().default(50),
-});
+  // --- X / Twitter ---
+  x: {
+    appKey: must("X_APP_KEY"),
+    appSecret: must("X_APP_SECRET"),
+    accessToken: must("X_ACCESS_TOKEN"),
+    accessSecret: must("X_ACCESS_SECRET"),
+  },
 
-export const CONFIG = EnvSchema.parse({
-  GROQ_API_KEY: process.env.GROQ_API_KEY,
-  GROQ_MODEL: process.env.GROQ_MODEL, // ✅ можно переопределить через env
-  X_APP_KEY: process.env.X_APP_KEY,
-  X_APP_SECRET: process.env.X_APP_SECRET,
-  X_ACCESS_TOKEN: process.env.X_ACCESS_TOKEN,
-  X_ACCESS_SECRET: process.env.X_ACCESS_SECRET,
-  BOT_NAME: process.env.BOT_NAME,
-  BOT_HANDLE: process.env.BOT_HANDLE,
-  MAX_REPLIES_PER_RUN: process.env.MAX_REPLIES_PER_RUN,
-  MAX_POSTS_IN_MEMORY: process.env.MAX_POSTS_IN_MEMORY,
-});
+  // --- Content limits ---
+  text: {
+    maxTweetChars: Number(opt("MAX_TWEET_CHARS", "260")),
+    maxReplyChars: Number(opt("MAX_REPLY_CHARS", "200")),
+  },
 
-export const PATHS = {
-  MEMORY: "data/memory.json",
+  // --- Poll system ---
+  poll: {
+    enabled: opt("POLL_ENABLED", "true") === "true",
+    durationHours: Number(opt("POLL_DURATION_HOURS", "24")),
+    optionsCount: Number(opt("POLL_OPTIONS_COUNT", "5")),
+    // сколько комментов читать за один запрос (обычно 100 max)
+    pageSize: Number(opt("POLL_PAGE_SIZE", "100")),
+  },
+
+  // --- Agent / GitHub self-commit ---
+  github: {
+    // В GH Actions обычно хватает GITHUB_TOKEN, но для пуша удобнее PAT
+    pat: opt("GH_PAT", ""),
+    // default branch
+    branch: opt("GIT_BRANCH", "main"),
+    // owner/repo можно оставить пустым если repo уже клонирован
+    owner: opt("GITHUB_OWNER", ""),
+    repo: opt("GITHUB_REPO", ""),
+  },
+
+  // --- Memory / Files ---
+  paths: {
+    memoryFile: opt("MEMORY_FILE", "data/memory.json"),
+    rulesFile: opt("RULES_FILE", "data/rules.json"),
+    governanceDir: opt("GOVERNANCE_DIR", "governance"),
+  },
+
+  // --- Scheduling suggestions (watch.ts can use these) ---
+  schedule: {
+    dailyPostHours: Number(opt("SCHEDULE_DAILY_HOURS", "2")),
+    replyHours: Number(opt("SCHEDULE_REPLY_HOURS", "6")),
+    metricsMinutes: Number(opt("SCHEDULE_METRICS_MINUTES", "15")),
+  },
 };
