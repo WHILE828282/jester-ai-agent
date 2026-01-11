@@ -1,10 +1,10 @@
 // src/generator.ts
 import { llm, MODEL } from "./openaiClient.js";
-import { CONFIG } from "./config.js";
 import { buildSystemPrompt } from "./rulesEngine.js";
+import { CONFIG } from "./config.js";
 
-export async function generateText(prompt: string) {
-  const system = buildSystemPrompt();
+export async function generateText(prompt: string, opts?: { maxChars?: number }) {
+  const system = buildSystemPrompt({ maxChars: opts?.maxChars });
 
   const resp = await llm.chat.completions.create({
     model: MODEL,
@@ -12,7 +12,7 @@ export async function generateText(prompt: string) {
       { role: "system", content: system },
       { role: "user", content: prompt },
     ],
-    temperature: CONFIG.TEMPERATURE,
+    temperature: CONFIG.temperature,
   });
 
   return resp.choices[0]?.message?.content ?? "";
@@ -31,12 +31,12 @@ export async function generateTweet(args: {
     `Write ONE short rude clever meme-style joke tweet as an American frog mascot for a memecoin.\n` +
     `Topic: ${topic}\n` +
     `Context: ${context}\n` +
-    `Avoid patterns: ${failPatterns.map((p) => p.text).join(" | ")}\n` +
-    `Prefer patterns: ${successPatterns.map((p) => p.text).join(" | ")}\n` +
+    `Avoid: ${failPatterns.map(p => p.text).join(" | ")}\n` +
+    `Prefer: ${successPatterns.map(p => p.text).join(" | ")}\n` +
     `Don't repeat: ${recentPosts.join(" || ")}\n` +
-    `Constraints: max ${CONFIG.MAX_TWEET_CHARS} chars. End with "ribbit."`;
+    `Max ${CONFIG.maxTweetChars} chars.\n`;
 
-  return generateText(prompt);
+  return generateText(prompt, { maxChars: CONFIG.maxTweetChars });
 }
 
 export async function generateReply(args: {
@@ -48,12 +48,12 @@ export async function generateReply(args: {
   const { userText, lastPost, successPatterns, failPatterns } = args;
 
   const prompt =
-    `Reply on X as Jester (rude witty American frog).\n` +
+    `Reply on X as Jester.\n` +
     `User: "${userText}"\n` +
     `Last post: "${lastPost}"\n` +
-    `Avoid patterns: ${failPatterns.map((p) => p.text).join(" | ")}\n` +
-    `Prefer patterns: ${successPatterns.map((p) => p.text).join(" | ")}\n` +
-    `Constraints: 1-2 sentences, under ${CONFIG.MAX_REPLY_CHARS} chars. End with "ribbit."`;
+    `Avoid: ${failPatterns.map(p => p.text).join(" | ")}\n` +
+    `Prefer: ${successPatterns.map(p => p.text).join(" | ")}\n` +
+    `Reply 1-2 sentences. Max ${CONFIG.maxReplyChars} chars.\n`;
 
-  return generateText(prompt);
+  return generateText(prompt, { maxChars: CONFIG.maxReplyChars });
 }
