@@ -2,16 +2,16 @@ import fs from "fs";
 import path from "path";
 
 /**
- * Очень простой unified-diff patcher.
- * Поддерживает только замену целого файла (не по строкам), если model прислал полный content.
+ * A very simple unified-diff patcher.
+ * Supports only whole-file replacement (not line-by-line) when the model returns full content.
  *
- * Формат:
+ * Format:
  * --- a/path/to/file.ts
  * +++ b/path/to/file.ts
  * @@
- * <полный новый файл>
+ * <full new file content>
  *
- * ✅ Это надежнее, чем пытаться делать line-by-line patch.
+ * ✅ This is more reliable than trying to do a line-by-line patch.
  */
 
 export type PatchFile = {
@@ -25,16 +25,16 @@ export function parsePatchToFiles(patch: string): PatchFile[] {
   const files: PatchFile[] = [];
 
   for (const block of blocks) {
-    // block начинается с "a/file"
+    // block starts with "a/file"
     const lines = block.split("\n");
     const first = lines[0].trim(); // "a/xxx"
     const filePath = first.replace(/^a\//, "").trim();
 
-    // ищем строку "+++"
+    // find the "+++"
     const plusIndex = lines.findIndex((l) => l.startsWith("+++ "));
     if (plusIndex === -1) continue;
 
-    // после @@ идет полный content
+    // full content goes after @@
     const atIndex = lines.findIndex((l) => l.startsWith("@@"));
     if (atIndex === -1) continue;
 
