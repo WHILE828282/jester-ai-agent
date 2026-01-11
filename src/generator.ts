@@ -1,18 +1,16 @@
-import { groq } from "./groqClient.js";
-import { CONFIG } from "./config.js";
-import { buildSystemPrompt } from "./guardrails.js";
+import { llm, MODEL } from "./openaiClient.js";
+import { buildSystemPrompt } from "./rulesEngine.js";
 
-export async function generateText(prompt: string, kind: "tweet" | "reply" = "tweet") {
-  const system = buildSystemPrompt(kind);
+export async function generateText(prompt: string, mode: "tweet" | "reply") {
+  const system = buildSystemPrompt(mode);
 
-  const resp = await groq.chat.completions.create({
-    model: CONFIG.groq.model,
+  const resp = await llm.chat.completions.create({
+    model: MODEL,
     messages: [
       { role: "system", content: system },
       { role: "user", content: prompt }
     ],
-    temperature: CONFIG.groq.temperature,
-    max_tokens: CONFIG.groq.maxTokens
+    temperature: 1.0
   });
 
   return resp.choices[0]?.message?.content ?? "";
@@ -29,20 +27,19 @@ export async function generateTweet(args: {
 
   const prompt = `
 Write ONE short rude clever meme-style joke tweet.
+
 Topic: ${topic}
 Context: ${context}
 
 Avoid patterns:
-${failPatterns.map((p) => `- ${p.text}`).join("\n")}
+${failPatterns.map((p) => p.text).join(" | ")}
 
 Prefer patterns:
-${successPatterns.map((p) => `- ${p.text}`).join("\n")}
+${successPatterns.map((p) => p.text).join(" | ")}
 
 Do not repeat:
-${recentPosts.slice(0, 10).join(" || ")}
-
-Return ONLY the tweet text.
-  `.trim();
+${recentPosts.join(" || ")}
+`.trim();
 
   return generateText(prompt, "tweet");
 }
@@ -56,18 +53,20 @@ export async function generateReply(args: {
   const { userText, lastPost, successPatterns, failPatterns } = args;
 
   const prompt = `
-Reply to this user on X in the same voice.
-User: "${userText}"
-Last post: "${lastPost}"
+Reply to the user on X.
+
+User text:
+"${userText}"
+
+Last post:
+"${lastPost}"
 
 Avoid patterns:
-${failPatterns.map((p) => `- ${p.text}`).join("\n")}
+${failPatterns.map((p) => p.text).join(" | ")}
 
 Prefer patterns:
-${successPatterns.map((p) => `- ${p.text}`).join("\n")}
-
-Return ONLY the reply text.
-  `.trim();
+${successPatterns.map((p) => p.text).join(" | ")}
+`.trim();
 
   return generateText(prompt, "reply");
 }
