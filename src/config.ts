@@ -1,25 +1,43 @@
-// src/config.ts
 import path from "node:path";
 
-export const CONFIG = {
-  // Глобальные лимиты
-  maxTweetChars: 240,
-  maxReplyChars: 200,
+export type Mode = "daily" | "reply" | "metrics" | "poll" | "agent_fix";
 
-  // Поведение генерации
-  temperature: 1.0,
+function env(name: string, fallback = ""): string {
+  return String(process.env[name] ?? fallback).trim();
+}
 
-  // Правила: сколько правил максимум держим активными (на всякий)
-  maxRules: 200,
-} as const;
+const ROOT = process.cwd();
 
+// ✅ Все пути централизованы здесь
 export const PATHS = {
-  // ВАЖНО: правила только тут
-  rulesFile: path.resolve("data", "rules.json"),
+  root: ROOT,
+  dataDir: path.join(ROOT, "data"),
+  memoryFile: path.join(ROOT, "data", "memory.json"),
+  rulesFile: path.join(ROOT, "data", "rules.json"),
+  pollsDir: path.join(ROOT, "data", "polls"),
+  governanceDir: path.join(ROOT, "data", "governance"),
+};
 
-  // Память
-  memoryFile: path.resolve("data", "memory.json"),
+// ✅ Все настройки централизованы здесь
+export const CONFIG = {
+  MODE: (env("MODE", "daily") as Mode),
 
-  // Логи голосований/решений (если захочешь)
-  governanceDir: path.resolve("data", "governance"),
+  // LLM (Groq через OpenAI-compatible endpoint)
+  GROQ_API_KEY: env("GROQ_API_KEY"),
+  GROQ_MODEL: env("GROQ_MODEL", "llama-3.1-8b-instant"),
+  GROQ_BASE_URL: env("GROQ_BASE_URL", "https://api.groq.com/openai/v1"),
+
+  // X tokens
+  X_APP_KEY: env("X_APP_KEY"),
+  X_APP_SECRET: env("X_APP_SECRET"),
+  X_ACCESS_TOKEN: env("X_ACCESS_TOKEN"),
+  X_ACCESS_SECRET: env("X_ACCESS_SECRET"),
+
+  // Metrics flags
+  METRICS_USE_X: env("METRICS_USE_X", "0") === "1",
+
+  // Git (если агент пушит)
+  GH_PAT: env("GH_PAT"),
+  GITHUB_REPO: env("GITHUB_REPO"), // например "user/repo"
+  GITHUB_BRANCH: env("GITHUB_BRANCH", "main"),
 } as const;
