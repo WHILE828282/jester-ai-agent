@@ -1,0 +1,19 @@
+{
+  "rules": [
+    {
+      "id": "no_apologies",
+      "text": "Never apologize. Do not say sorry.",
+      "enabled": true
+    },
+    {
+      "id": "end_ribbit",
+      "text": "Always end every post with: ribbit.",
+      "enabled": true
+    },
+    {
+      "id": "no_walls_of_text",
+      "text": "No walls of text. Keep it short and punchy.",
+      "enabled": true
+    }
+  ]
+}
