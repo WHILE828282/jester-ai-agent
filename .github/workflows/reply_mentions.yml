@@ -3,7 +3,7 @@ name: Reply Mentions Every 6 Hours
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 */6 * * *"   # каждые 6 часов (UTC)
+    - cron: "0 */6 * * *"   # every 6 hours (UTC)
 
 concurrency:
   group: jester-agent-global
@@ -30,7 +30,7 @@ jobs:
         env:
           MODE: reply
 
-          # ✅ Reply на 8B (меньше 429)
+          # ✅ Use 8B model for replies (reduces 429 rate)
           GROQ_MODEL: llama-3.1-8b-instant
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
 
@@ -39,7 +39,7 @@ jobs:
           X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
           X_ACCESS_SECRET: ${{ secrets.X_ACCESS_SECRET }}
 
-          # ✅ Чтобы не выбивать write cap (500/month)
+          # ✅ To avoid exceeding write cap (500/month)
           MAX_REPLIES_PER_RUN: "8"
 
         run: |
