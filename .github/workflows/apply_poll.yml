@@ -3,7 +3,7 @@ name: Apply Poll Result
 on:
   workflow_dispatch:
   schedule:
-    - cron: "15 * * * *"   # каждый час на 15-й минуте (UTC)
+    - cron: "15 * * * *"   # every hour at minute 15 (UTC)
 
 concurrency:
   group: jester-agent-global
