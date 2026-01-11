@@ -7,12 +7,12 @@ const LAST_ERROR_LOG = path.join(LOG_DIR, "last_error.log");
 
 if (!fs.existsSync(LOG_DIR)) fs.mkdirSync(LOG_DIR, { recursive: true });
 
-const MAX_RESTARTS = 10; // защита от бесконечного цикла
-const COOLDOWN_MS = 30_000; // 30 сек пауза перед рестартом
+const MAX_RESTARTS = 10; // protect against an infinite restart loop
+const COOLDOWN_MS = 30_000; // 30s cooldown before restart
 let restartCount = 0;
 
 /**
- * запускаем основной бот
+ * Start the main bot.
  */
 function startBot() {
   console.log("\n🟢 Starting bot...");
@@ -33,7 +33,7 @@ function startBot() {
     process.stderr.write(msg);
     stderrBuf += msg;
 
-    // сохраняем последнюю ошибку в файл
+    // Persist the last error to a file
     fs.writeFileSync(LAST_ERROR_LOG, stderrBuf.slice(-20000), "utf8");
   });
 
@@ -41,11 +41,11 @@ function startBot() {
     console.log(`\n🔴 Bot exited with code: ${code}`);
 
     if (code === 0) {
-      console.log("✅ Bot closed normally. Watchdog остановлен.");
+      console.log("✅ Bot closed normally. Watchdog stopped.");
       process.exit(0);
     }
 
-    // если слишком много рестартов — стопаем чтобы не зациклиться
+    // If there are too many restarts, stop to avoid looping forever
     restartCount++;
     if (restartCount > MAX_RESTARTS) {
       console.log("❌ Too many restarts. Stopping watchdog.");
@@ -68,7 +68,7 @@ function startBot() {
 }
 
 /**
- * запускаем fixer.ts
+ * Start fixer.ts
  */
 function runFixer(): Promise<boolean> {
   return new Promise((resolve) => {
@@ -96,5 +96,5 @@ function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-// === старт watchdog ===
+// === start watchdog ===
 startBot();
