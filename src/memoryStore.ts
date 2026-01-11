@@ -1,27 +1,119 @@
-import fs from "fs";
-import { PATHS, CONFIG } from "./config.js";
-type Post = { tweet_id: string; content: string; topic?: string; context?: string; created_at?: string };
-type Pattern = { kind: "success" | "avoid"; text: string; score?: number; ts?: string };
-type Memory = { version: number; history: any[]; posts: Post[]; patterns: Pattern[]; state: Record<string, any>; };
-export class MemoryStore {
-  private mem: Memory;
-  constructor(){ this.mem = this.load(); }
-  private load(): Memory {
-    if (!fs.existsSync(PATHS.MEMORY)) {
-      const fresh: Memory = { version:1, history:[], posts:[], patterns:[], state:{} };
-      fs.mkdirSync("data",{ recursive:true });
-      fs.writeFileSync(PATHS.MEMORY, JSON.stringify(fresh,null,2));
-      return fresh;
-    }
-    const parsed = JSON.parse(fs.readFileSync(PATHS.MEMORY,"utf8"));
-    return { version: parsed.version ?? 1, history: parsed.history ?? [], posts: parsed.posts ?? [], patterns: parsed.patterns ?? [], state: parsed.state ?? {} };
+import fs from "node:fs";
+import path from "node:path";
+import { PATHS } from "./config.js";
+
+type PatternType = "success" | "avoid";
+
+export type MemoryPost = {
+  tweet_id: string;
+  content: string;
+  topic: string;
+  context: string;
+  ts?: number;
+};
+
+export type Pattern = {
+  text: string;
+  score?: number;
+  ts?: number;
+};
+
+type MemoryShape = {
+  posts: MemoryPost[];
+  patterns: {
+    success: Pattern[];
+    avoid: Pattern[];
+  };
+  state: {
+    lastMentionId?: string;
+    lastRun?: number;
+    lastMetricsRun?: number;
+  };
+};
+
+function ensureDir(p: string) {
+  fs.mkdirSync(p, { recursive: true });
+}
+
+function safeReadJson<T>(file: string, fallback: T): T {
+  try {
+    if (!fs.existsSync(file)) return fallback;
+    const raw = fs.readFileSync(file, "utf-8");
+    return JSON.parse(raw) as T;
+  } catch {
+    return fallback;
   }
-  private save(){ fs.writeFileSync(PATHS.MEMORY, JSON.stringify(this.mem,null,2)); }
-  addPost(p: Post){ this.mem.posts.unshift({ ...p, created_at: p.created_at ?? new Date().toISOString() }); this.mem.posts = this.mem.posts.slice(0, CONFIG.MAX_POSTS_IN_MEMORY); this.save(); }
-  getLastPost(){ return this.mem.posts[0]; }
-  getRecentPosts(n:number){ return this.mem.posts.slice(0,n); }
-  getPatterns(kind:"success"|"avoid", n:number){ return this.mem.patterns.filter(p=>p.kind===kind).slice(0,n); }
-  addPattern(kind:"success"|"avoid", text:string, score:number=1){ this.mem.patterns.unshift({ kind, text, score, ts:new Date().toISOString() }); this.save(); }
-  getState(key:string){ return this.mem.state[key]; }
-  setState(key:string, value:any){ this.mem.state[key]=value; this.save(); }
+}
+
+function safeWriteJson(file: string, data: any) {
+  ensureDir(path.dirname(file));
+  fs.writeFileSync(file, JSON.stringify(data, null, 2), "utf-8");
+}
+
+const DEFAULT_MEMORY: MemoryShape = {
+  posts: [],
+  patterns: { success: [], avoid: [] },
+  state: {},
+};
+
+export class MemoryStore {
+  private mem: MemoryShape;
+
+  constructor() {
+    // ✅ гарантируем data/ существует
+    ensureDir(PATHS.dataDir);
+
+    // ✅ если memory.json нет — создаём
+    this.mem = safeReadJson<MemoryShape>(PATHS.memoryFile, DEFAULT_MEMORY);
+    if (!this.mem.posts) this.mem.posts = [];
+    if (!this.mem.patterns) this.mem.patterns = { success: [], avoid: [] };
+    if (!this.mem.patterns.success) this.mem.patterns.success = [];
+    if (!this.mem.patterns.avoid) this.mem.patterns.avoid = [];
+    if (!this.mem.state) this.mem.state = {};
+
+    this.flush(); // закрепим корректную структуру на диске
+  }
+
+  flush() {
+    safeWriteJson(PATHS.memoryFile, this.mem);
+  }
+
+  getRecentPosts(n = 10): MemoryPost[] {
+    return [...this.mem.posts].slice(-n);
+  }
+
+  addPost(p: MemoryPost) {
+    this.mem.posts.push({ ...p, ts: p.ts ?? Date.now() });
+    // ограничим историю чтобы не разрасталась бесконечно
+    if (this.mem.posts.length > 300) this.mem.posts = this.mem.posts.slice(-300);
+    this.flush();
+  }
+
+  getPatterns(type: PatternType, n = 10): Pattern[] {
+    const arr = this.mem.patterns[type] ?? [];
+    return [...arr].slice(-n);
+  }
+
+  addPattern(type: PatternType, text: string, score = 1) {
+    this.mem.patterns[type] = this.mem.patterns[type] ?? [];
+    this.mem.patterns[type].push({ text, score, ts: Date.now() });
+    if (this.mem.patterns[type].length > 500) {
+      this.mem.patterns[type] = this.mem.patterns[type].slice(-500);
+    }
+    this.flush();
+  }
+
+  getLastMentionId(): string | undefined {
+    return this.mem.state.lastMentionId;
+  }
+
+  setLastMentionId(id: string) {
+    this.mem.state.lastMentionId = id;
+    this.flush();
+  }
+
+  markMetricsRun() {
+    this.mem.state.lastMetricsRun = Date.now();
+    this.flush();
+  }
 }
