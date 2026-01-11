@@ -27,12 +27,12 @@ function makeDefaultPollSpec(): PollSpec {
 }
 
 /**
- * Берём первую цифру 1..5 из текста (и только её считаем).
- * "я за номер два потому что..." -> найдёт 2 если в тексте есть "2"
- * Если человек пишет "2 2 2 2" -> всё равно это один голос (мы по пользователю уникализируем).
+ * Take the first digit 1..5 from the text (and count only that).
+ * "I'm voting for number two because..." -> finds 2 if the text contains "2"
+ * If someone writes "2 2 2 2" -> it's still a single vote (deduped per user).
  */
 function extractVote(text: string): number | null {
-  // ищем первую цифру 1..5
+  // Find the first digit 1..5
   const m = text.match(/[1-5]/);
   if (!m) return null;
   const n = Number(m[0]);
@@ -61,13 +61,13 @@ async function postPollTweet(spec: PollSpec) {
 }
 
 /**
- * Собираем ответы на твит (комменты) и считаем голоса:
- * - 1 голос на userId
- * - учитываем только первый валидный голос от пользователя
+ * Collect replies to the tweet (comments) and count votes:
+ * - 1 vote per userId
+ * - only the first valid vote per user counts
  */
 async function collectVotes(tweetId: string) {
-  // twitter-api-v2: search replies можно так:
-  // мы ищем твиты "conversation_id:tweetId"
+  // twitter-api-v2: you can search replies like this:
+  // we search tweets with "conversation_id:tweetId"
   const query = `conversation_id:${tweetId}`;
 
   const paginator = await xClient.v2.search(query, {
@@ -104,7 +104,7 @@ function pickWinner(counts: Map<number, number>): number | null {
       best = k;
       bestCount = v;
     } else if (v === bestCount && best !== null) {
-      // тай-брейк: меньший номер побеждает
+      // Tiebreak: lower number wins
       if (k < best) best = k;
     }
   }
@@ -133,7 +133,7 @@ export async function runPoll(mode: "poll_post" | "poll_close") {
   }
   if (!spec.tweetId) throw new Error("Poll is missing tweetId.");
 
-  // проверка времени закрытия
+  // Check close time
   const now = Date.now();
   const closeAt = new Date(spec.closesAt).getTime();
   if (now < closeAt) {
@@ -153,7 +153,7 @@ export async function runPoll(mode: "poll_post" | "poll_close") {
   });
 
   if (!winner) {
-    // никто не проголосовал — закрываем без действия
+    // No votes — close without action
     spec.status = "closed";
     spec.winner = {
       optionId: -1,
@@ -166,3 +166,4 @@ export async function runPoll(mode: "poll_post" | "poll_close") {
 
   closeAndApply(spec, winner);
 }
+
