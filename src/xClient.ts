@@ -4,34 +4,40 @@ import { log } from "./logger.js";
 
 let _client: TwitterApi | null = null;
 
-function buildClient(): TwitterApi {
-  const appKey = (CONFIG as any).X_APP_KEY ?? process.env.X_APP_KEY ?? "";
-  const appSecret = (CONFIG as any).X_APP_SECRET ?? process.env.X_APP_SECRET ?? "";
-  const accessToken = (CONFIG as any).X_ACCESS_TOKEN ?? process.env.X_ACCESS_TOKEN ?? "";
-  const accessSecret = (CONFIG as any).X_ACCESS_SECRET ?? process.env.X_ACCESS_SECRET ?? "";
+function readEnv(name: string): string {
+  // CONFIG может быть undefined если config.ts не экспортирует как надо
+  const fromConfig = (CONFIG as any)?.[name];
+  const fromEnv = process.env[name];
+  return String(fromConfig ?? fromEnv ?? "").trim();
+}
 
-  // Без утечки секретов — только длины
+function buildClient(): TwitterApi {
+  const appKey = readEnv("X_APP_KEY");
+  const appSecret = readEnv("X_APP_SECRET");
+  const accessToken = readEnv("X_ACCESS_TOKEN");
+  const accessSecret = readEnv("X_ACCESS_SECRET");
+
+  // Пишем только длины (не палим секреты)
   log("INFO", "X auth present (lengths)", {
-    X_APP_KEY_len: String(appKey).length,
-    X_APP_SECRET_len: String(appSecret).length,
-    X_ACCESS_TOKEN_len: String(accessToken).length,
-    X_ACCESS_SECRET_len: String(accessSecret).length,
+    X_APP_KEY_len: appKey.length,
+    X_APP_SECRET_len: appSecret.length,
+    X_ACCESS_TOKEN_len: accessToken.length,
+    X_ACCESS_SECRET_len: accessSecret.length,
   });
 
-  try {
-    return new TwitterApi({
-      appKey: String(appKey),
-      appSecret: String(appSecret),
-      accessToken: String(accessToken),
-      accessSecret: String(accessSecret),
-    });
-  } catch (e: any) {
-    // twitter-api-v2 кидает "Invalid consumer tokens" именно тут
+  if (!appKey || !appSecret || !accessToken || !accessSecret) {
     throw new Error(
-      `X client init failed: ${e?.message ?? String(e)}. ` +
-        `Check X_APP_KEY/X_APP_SECRET and X_ACCESS_TOKEN/X_ACCESS_SECRET in GitHub Secrets.`
+      "Missing X credentials. Check GitHub Secrets: X_APP_KEY, X_APP_SECRET, X_ACCESS_TOKEN, X_ACCESS_SECRET."
     );
   }
+
+  // Именно тут twitter-api-v2 кидает "Invalid consumer tokens"
+  return new TwitterApi({
+    appKey,
+    appSecret,
+    accessToken,
+    accessSecret,
+  });
 }
 
 export function getXClient(): TwitterApi {
@@ -40,10 +46,12 @@ export function getXClient(): TwitterApi {
   return _client;
 }
 
-// Чтобы не менять остальной код, даём "xClient" как прокси,
-// инициализируется только при первом обращении xClient.v2 / xClient.v1 и т.д.
+/**
+ * Экспортируем xClient так, чтобы он НЕ создавался при импорте файла.
+ * Инициализация произойдёт только при первом обращении xClient.v1 / xClient.v2.
+ */
 export const xClient: TwitterApi = new Proxy({} as TwitterApi, {
-  get(_t, prop) {
+  get(_target, prop) {
     const c = getXClient() as any;
     return c[prop];
   },
