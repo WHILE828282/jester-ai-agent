@@ -9,25 +9,25 @@ function env(name: string, fallback?: string) {
   return "";
 }
 
-// ВАЖНО: здесь больше НЕ используется OPENAI_API_KEY.
-// Используем только GROQ_API_KEY.
+// IMPORTANT: OPENAI_API_KEY is NOT used here anymore.
+// We only use GROQ_API_KEY.
 const GROQ_API_KEY = env("GROQ_API_KEY");
 if (!GROQ_API_KEY) {
-  // Делаем понятную ошибку, чтобы не было “missing OPENAI_API_KEY”
+  // Make the error explicit to avoid confusing “missing OPENAI_API_KEY” messages
   throw new Error("GROQ_API_KEY is missing. Add it to GitHub Secrets and workflow env.");
 }
 
-// Базовый URL Groq OpenAI-compatible API
+// Base URL for Groq OpenAI-compatible API
 const baseURL = env("GROQ_BASE_URL", "https://api.groq.com/openai/v1");
 
-// Модель берём из env, иначе дефолт
+// Read model from env, otherwise use a default
 export const MODEL = env("GROQ_MODEL", "llama-3.3-70b-versatile");
 
-// Это “llm” как раньше — чтобы твой generator.ts НЕ трогать.
+// Keep the exported name “llm” so generator.ts does not need changes.
 export const llm = new OpenAI({
   apiKey: GROQ_API_KEY,
   baseURL,
 });
 
-// Лог для дебага (без ключа)
+// Debug log (without the key)
 log("INFO", "LLM client initialized", { provider: "groq", baseURL, model: MODEL });
