@@ -1,88 +1,112 @@
-import fs from "fs";
-import path from "path";
-import { loadRules, saveRules, deleteRuleById, disableRuleById } from "./rules.js";
-import { CONFIG } from "./config.js";
+// src/pollApply.ts
+import fs from "node:fs";
+import path from "node:path";
+import { PATHS } from "./config.js";
+import { deleteRuleById, loadRulesFile, saveRulesFile } from "./rulesEngine.js";
 import { log } from "./logger.js";
 
-export type PollOptionAction =
-  | { type: "add_rule"; payload: any }
-  | { type: "disable_rule"; ruleId: string }
-  | { type: "delete_rule"; ruleId: string }
-  | { type: "set_value"; path: string; value: any }
-  | { type: "noop" };
-
-export type PollSpec = {
+type PollResult = {
   pollId: string;
-  createdAt: number;
-  options: {
-    num: number; // 1..5
-    title: string;
-    action: PollOptionAction;
-  }[];
+  createdAt: string;
+  closedAt: string;
+  winner: number;                 // 1..5
+  winnerText: string;             // описание варианта
+  winnerAction: string;           // например "DELETE_RULE:no_apologies"
+  tally: Record<string, number>;  // "1": 10, "2": 5 ...
 };
 
-export function loadPollSpec(): PollSpec {
-  const fp = path.resolve(CONFIG.paths.pollSpecFile);
-  if (!fs.existsSync(fp)) throw new Error(`Poll spec not found: ${fp}`);
-  return JSON.parse(fs.readFileSync(fp, "utf-8"));
+function ensureDir(p: string) {
+  if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true });
 }
 
-export function savePollSpec(spec: PollSpec) {
-  const fp = path.resolve(CONFIG.paths.pollSpecFile);
-  fs.mkdirSync(path.dirname(fp), { recursive: true });
-  fs.writeFileSync(fp, JSON.stringify(spec, null, 2), "utf-8");
-  log("INFO", "Poll spec saved", { file: fp });
+function readJson<T>(p: string): T {
+  const raw = fs.readFileSync(p, "utf-8");
+  return JSON.parse(raw) as T;
 }
 
-export function applyWinningOption(winner: number) {
-  const spec = loadPollSpec();
-  const opt = spec.options.find((o) => o.num === winner);
-  if (!opt) throw new Error(`No option found for winner ${winner}`);
+function writeJson(p: string, obj: any) {
+  ensureDir(path.dirname(p));
+  fs.writeFileSync(p, JSON.stringify(obj, null, 2), "utf-8");
+}
 
-  log("INFO", "Applying poll winner", { winner, title: opt.title, action: opt.action });
+function appendAuditLine(line: string) {
+  ensureDir(PATHS.GOVERNANCE_DIR);
+  const auditPath = path.join(PATHS.GOVERNANCE_DIR, "audit.log");
+  fs.appendFileSync(auditPath, line + "\n", "utf-8");
+}
 
-  const rules = loadRules();
-
-  if (opt.action.type === "add_rule") {
-    // payload должен быть Rule-like объект и куда добавлять (required/banned/style/safety)
-    const payload = opt.action.payload;
-    const bucket = payload.bucket as "required" | "banned" | "style" | "safety";
-    if (!bucket || !rules[bucket]) throw new Error("Invalid add_rule payload.bucket");
-    const rule = payload.rule;
-    if (!rule?.id) throw new Error("Invalid add_rule payload.rule");
-
-    (rules as any)[bucket].push(rule);
-    saveRules(rules);
-    return { ok: true, applied: `added_rule_${rule.id}` };
+export async function applyLatestPollResult() {
+  const resultPath = path.join(PATHS.GOVERNANCE_DIR, "latest_poll_result.json");
+  if (!fs.existsSync(resultPath)) {
+    log("ERROR", "No latest_poll_result.json found", { resultPath });
+    process.exitCode = 1;
+    return;
   }
 
-  if (opt.action.type === "disable_rule") {
-    const ok = disableRuleById(rules, opt.action.ruleId);
-    if (!ok) throw new Error(`Rule not found to disable: ${opt.action.ruleId}`);
-    saveRules(rules);
-    return { ok: true, applied: `disabled_rule_${opt.action.ruleId}` };
+  const res = readJson<PollResult>(resultPath);
+
+  log("INFO", "Applying poll result", {
+    pollId: res.pollId,
+    winner: res.winner,
+    winnerAction: res.winnerAction,
+  });
+
+  const action = (res.winnerAction || "").trim();
+
+  if (!action) {
+    log("ERROR", "winnerAction is empty", { pollId: res.pollId });
+    process.exitCode = 1;
+    return;
   }
 
-  if (opt.action.type === "delete_rule") {
-    const ok = deleteRuleById(rules, opt.action.ruleId);
-    if (!ok) throw new Error(`Rule not found to delete: ${opt.action.ruleId}`);
-    saveRules(rules);
-    return { ok: true, applied: `deleted_rule_${opt.action.ruleId}` };
-  }
-
-  if (opt.action.type === "set_value") {
-    // например maxTweetChars
-    // path: "constraints.maxTweetChars"
-    const p = opt.action.path.split(".");
-    let obj: any = rules;
-    for (let i = 0; i < p.length - 1; i++) {
-      if (!(p[i] in obj)) obj[p[i]] = {};
-      obj = obj[p[i]];
+  // ✅ ТРЕБУЕМОЕ: физическое удаление правила
+  if (action.startsWith("DELETE_RULE:")) {
+    const ruleId = action.replace("DELETE_RULE:", "").trim();
+    if (!ruleId) {
+      log("ERROR", "DELETE_RULE missing ruleId", { pollId: res.pollId });
+      process.exitCode = 1;
+      return;
     }
-    obj[p[p.length - 1]] = opt.action.value;
-    saveRules(rules);
-    return { ok: true, applied: `set_${opt.action.path}` };
+
+    // проверим что оно реально есть перед удалением
+    const before = loadRulesFile();
+    const existed = before.rules.some(r => r.id === ruleId);
+
+    const ok = deleteRuleById(ruleId);
+    if (!ok) {
+      log("ERROR", "Rule not deleted (not found?)", { ruleId });
+      process.exitCode = 1;
+      return;
+    }
+
+    const after = loadRulesFile();
+
+    const auditLine =
+      `[${new Date().toISOString()}] poll=${res.pollId} ACTION=DELETE_RULE id=${ruleId} existed=${existed} rules_before=${before.rules.length} rules_after=${after.rules.length}`;
+
+    appendAuditLine(auditLine);
+
+    // сохраним “применено”
+    const appliedPath = path.join(PATHS.GOVERNANCE_DIR, `applied_${res.pollId}.json`);
+    writeJson(appliedPath, {
+      pollId: res.pollId,
+      appliedAt: new Date().toISOString(),
+      action,
+      ruleId,
+      winner: res.winner,
+      winnerText: res.winnerText,
+      tally: res.tally,
+    });
+
+    log("INFO", "✅ Rule deleted", { ruleId });
+    return;
   }
 
-  return { ok: true, applied: "noop" };
+  // если действие неизвестное
+  log("ERROR", "Unknown winnerAction", { action });
+  process.exitCode = 1;
+}
+
+if (import.meta.url === `file://${process.argv[1]}`) {
+  applyLatestPollResult();
 }
