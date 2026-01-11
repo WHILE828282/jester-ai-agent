@@ -1,130 +1,113 @@
 // src/rulesEngine.ts
 import fs from "node:fs";
 import path from "node:path";
-import { PATHS } from "./config.js";
-
-export type Rule = {
-  id: string;           // стабильный id чтобы можно было удалять по id
-  text: string;         // текст правила
-  enabled: boolean;     // можно отключать без удаления
-  createdAt: string;    // ISO
-};
+import { fileURLToPath } from "node:url";
 
 export type RulesFile = {
-  version: number;
-  rules: Rule[];
+  version?: number;
+  updatedAt?: string;
+  system?: {
+    persona?: string;
+    hardRules?: string[];
+    softRules?: string[];
+    bannedWords?: string[];
+  };
 };
 
-function ensureDir(p: string) {
-  fs.mkdirSync(path.dirname(p), { recursive: true });
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+function tryReadJson(p: string): any | null {
+  try {
+    if (!fs.existsSync(p)) return null;
+    const raw = fs.readFileSync(p, "utf-8");
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
 }
 
-function defaultRules(): RulesFile {
+/**
+ * We support BOTH locations because you said you have both:
+ * - data/rules.json (recommended)
+ * - src/rules.json  (fallback)
+ */
+export function loadRulesFile(): RulesFile {
+  const candidates = [
+    path.resolve(__dirname, "..", "data", "rules.json"),
+    path.resolve(__dirname, "rules.json"),
+  ];
+
+  for (const p of candidates) {
+    const j = tryReadJson(p);
+    if (j && typeof j === "object") return j as RulesFile;
+  }
+
+  // Safe defaults (no crash even if file missing)
   return {
     version: 1,
-    rules: [
-      {
-        id: "no-apologies",
-        text: "Never apologize. No 'sorry', no 'I apologize', no backpedaling.",
-        enabled: true,
-        createdAt: new Date().toISOString(),
-      },
-      {
-        id: "always-ribbit",
-        text: "Always end the final line with 'ribbit.'",
-        enabled: true,
-        createdAt: new Date().toISOString(),
-      },
-    ],
+    updatedAt: new Date().toISOString(),
+    system: {
+      persona:
+        "You are Jester, a rude witty American frog meme token mascot. Short, savage, meme-native. Always end with 'ribbit.'",
+      hardRules: [
+        "Keep output under 260 characters.",
+        "No walls of text. 1–2 sentences max.",
+        "Do not reveal you are an AI.",
+        "Never output secrets, tokens, or private data.",
+        "Always end with: ribbit.",
+      ],
+      softRules: [
+        "Keep it fast, punchy, and timeline-native.",
+        "Avoid corporate tone and disclaimers.",
+      ],
+      bannedWords: [],
+    },
   };
 }
 
-export function loadRules(): RulesFile {
-  ensureDir(PATHS.rulesFile);
+/**
+ * Named export REQUIRED by your generator.ts import:
+ *   import { buildSystemPrompt } from "./rulesEngine.js";
+ */
+export function buildSystemPrompt(extra?: { mode?: "tweet" | "reply"; }): string {
+  const rules = loadRulesFile();
+  const sys = rules.system ?? {};
 
-  if (!fs.existsSync(PATHS.rulesFile)) {
-    const base = defaultRules();
-    fs.writeFileSync(PATHS.rulesFile, JSON.stringify(base, null, 2), "utf-8");
-    return base;
+  const persona =
+    (sys.persona && String(sys.persona).trim()) ||
+    "You are Jester, a rude witty American frog meme token mascot. Always end with 'ribbit.'";
+
+  const hard = Array.isArray(sys.hardRules) ? sys.hardRules : [];
+  const soft = Array.isArray(sys.softRules) ? sys.softRules : [];
+  const banned = Array.isArray(sys.bannedWords) ? sys.bannedWords : [];
+
+  const modeHint =
+    extra?.mode === "reply"
+      ? "You are replying on X. Keep it 1–2 sentences. Under 200 chars if possible."
+      : "You are writing a single X post. Under 240 chars if possible.";
+
+  const lines: string[] = [];
+  lines.push(persona);
+  lines.push(modeHint);
+
+  if (hard.length) {
+    lines.push("");
+    lines.push("HARD RULES:");
+    for (const r of hard) lines.push(`- ${r}`);
   }
 
-  const raw = fs.readFileSync(PATHS.rulesFile, "utf-8");
-  const parsed = JSON.parse(raw) as RulesFile;
-
-  if (!parsed || !Array.isArray(parsed.rules)) {
-    const base = defaultRules();
-    fs.writeFileSync(PATHS.rulesFile, JSON.stringify(base, null, 2), "utf-8");
-    return base;
+  if (soft.length) {
+    lines.push("");
+    lines.push("SOFT RULES:");
+    for (const r of soft) lines.push(`- ${r}`);
   }
 
-  // минимальная нормализация
-  parsed.version = typeof parsed.version === "number" ? parsed.version : 1;
-  parsed.rules = parsed.rules.map((r: any) => ({
-    id: String(r.id ?? ""),
-    text: String(r.text ?? ""),
-    enabled: Boolean(r.enabled ?? true),
-    createdAt: String(r.createdAt ?? new Date().toISOString()),
-  })).filter(r => r.id && r.text);
+  if (banned.length) {
+    lines.push("");
+    lines.push("BANNED WORDS/PHRASES (must not appear):");
+    lines.push(banned.map((x) => String(x)).join(", "));
+  }
 
-  return parsed;
-}
-
-export function saveRules(file: RulesFile) {
-  ensureDir(PATHS.rulesFile);
-  fs.writeFileSync(PATHS.rulesFile, JSON.stringify(file, null, 2), "utf-8");
-}
-
-/**
- * Удаление правила по id (именно удаление).
- */
-export function deleteRuleById(id: string): boolean {
-  const file = loadRules();
-  const before = file.rules.length;
-  file.rules = file.rules.filter(r => r.id !== id);
-  saveRules(file);
-  return file.rules.length !== before;
-}
-
-/**
- * Удаление правила по совпадению текста (fallback).
- * Удаляет первое полное совпадение.
- */
-export function deleteRuleByTextExact(text: string): boolean {
-  const file = loadRules();
-  const idx = file.rules.findIndex(r => r.text.trim() === text.trim());
-  if (idx === -1) return false;
-  file.rules.splice(idx, 1);
-  saveRules(file);
-  return true;
-}
-
-/**
- * Добавление нового правила (для governance).
- */
-export function addRule(rule: { id: string; text: string; enabled?: boolean }) {
-  const file = loadRules();
-  const exists = file.rules.some(r => r.id === rule.id);
-  if (exists) return;
-
-  file.rules.push({
-    id: rule.id,
-    text: rule.text,
-    enabled: rule.enabled ?? true,
-    createdAt: new Date().toISOString(),
-  });
-
-  saveRules(file);
-}
-
-/**
- * Готовит блок системных правил для system prompt.
- */
-export function buildRulesForSystemPrompt(): string {
-  const file = loadRules();
-  const enabled = file.rules.filter(r => r.enabled);
-
-  if (enabled.length === 0) return "";
-
-  const lines = enabled.map((r, i) => `${i + 1}. ${r.text}`);
-  return `Jester Rules (community-governed):\n${lines.join("\n")}`;
+  return lines.join("\n");
 }
