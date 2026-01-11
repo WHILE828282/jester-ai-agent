@@ -1,40 +1,75 @@
-import fs from "node:fs";
-import path from "node:path";
+import fs from "fs";
+import path from "path";
+import { CONFIG } from "./config.js";
+import { log } from "./logger.js";
 
 export type Rule = {
   id: string;
   title: string;
-  text: string;
-  active: boolean;
+  enabled: boolean;
+  type: "regex" | "suffix" | "prefix";
+  value: string;
+  severity?: "reject" | "warn";
 };
 
 export type RulesFile = {
   version: number;
-  rules: Rule[];
+  character: any;
+  constraints: {
+    maxTweetChars: number;
+    maxReplyChars: number;
+  };
+  required: Rule[];
+  banned: Rule[];
+  style: Rule[];
+  safety: Rule[];
 };
 
-const RULES_PATH = path.join(process.cwd(), "data", "rules.json");
-
 export function loadRules(): RulesFile {
-  if (!fs.existsSync(RULES_PATH)) {
-    return { version: 1, rules: [] };
+  const fp = path.resolve(CONFIG.paths.rulesFile);
+  if (!fs.existsSync(fp)) {
+    throw new Error(`Rules file not found: ${fp}`);
   }
-  const raw = fs.readFileSync(RULES_PATH, "utf-8");
-  return JSON.parse(raw);
+  const raw = fs.readFileSync(fp, "utf-8");
+  const json = JSON.parse(raw);
+
+  // minimal validation (avoid crash if someone edits badly)
+  if (!json.constraints) {
+    json.constraints = {
+      maxTweetChars: CONFIG.text.maxTweetChars,
+      maxReplyChars: CONFIG.text.maxReplyChars,
+    };
+  }
+  for (const k of ["required", "banned", "style", "safety"]) {
+    if (!Array.isArray(json[k])) json[k] = [];
+  }
+  return json as RulesFile;
 }
 
-export function saveRules(rulesFile: RulesFile) {
-  fs.mkdirSync(path.dirname(RULES_PATH), { recursive: true });
-  fs.writeFileSync(RULES_PATH, JSON.stringify(rulesFile, null, 2), "utf-8");
+export function saveRules(rules: RulesFile) {
+  const fp = path.resolve(CONFIG.paths.rulesFile);
+  fs.mkdirSync(path.dirname(fp), { recursive: true });
+  fs.writeFileSync(fp, JSON.stringify(rules, null, 2), "utf-8");
+  log("INFO", "Rules saved", { file: fp });
 }
 
-export function getActiveRulesText(): string {
-  const rulesFile = loadRules();
-  const active = rulesFile.rules.filter(r => r.active);
+export function disableRuleById(rules: RulesFile, id: string): boolean {
+  const all = [...rules.required, ...rules.banned, ...rules.style, ...rules.safety];
+  const r = all.find((x) => x.id === id);
+  if (!r) return false;
+  r.enabled = false;
+  return true;
+}
 
-  if (active.length === 0) return "(no active rules)";
-
-  return active
-    .map(r => `- (${r.id}) ${r.title}: ${r.text}`)
-    .join("\n");
+export function deleteRuleById(rules: RulesFile, id: string): boolean {
+  const keys: (keyof RulesFile)[] = ["required", "banned", "style", "safety"];
+  for (const key of keys) {
+    const arr = rules[key] as any[];
+    const idx = arr.findIndex((x) => x.id === id);
+    if (idx >= 0) {
+      arr.splice(idx, 1);
+      return true;
+    }
+  }
+  return false;
 }
