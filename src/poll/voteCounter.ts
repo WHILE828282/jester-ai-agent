@@ -2,33 +2,30 @@ import { xClient } from "../xClient.js";
 import { log } from "../logger.js";
 
 function extractVote(text: string): number | null {
-  // ищем первую цифру 1..5
+  // Find the first digit 1..5
   const m = text.match(/[1-5]/);
   if (!m) return null;
   return parseInt(m[0], 10);
 }
 
 export async function countVotesForTweet(pollTweetId: string) {
-  // Тут мы собираем replies (комменты) к твиту
-  // Twitter API v2: search_recent_tweets можно использовать по conversation_id
-  // Но удобнее через search:
+  // Here we collect replies (comments) to the tweet.
+  // Twitter API v2: search_recent_tweets can be used via conversation_id
+  // But it's more convenient to use search:
   // query: `conversation_id:${pollTweetId} is:reply`
 
-  const counts: Record<number, number> = { 1:0, 2:0, 3:0, 4:0, 5:0 };
+  const counts: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
   const voterSet = new Set<string>();
 
   let nextToken: string | undefined = undefined;
   let totalReplies = 0;
 
   while (true) {
-    const res = await xClient.v2.search(
-      `conversation_id:${pollTweetId} is:reply`,
-      {
-        "tweet.fields": ["author_id","created_at","conversation_id"],
-        max_results: 100,
-        next_token: nextToken,
-      }
-    );
+    const res = await xClient.v2.search(`conversation_id:${pollTweetId} is:reply`, {
+      "tweet.fields": ["author_id", "created_at", "conversation_id"],
+      max_results: 100,
+      next_token: nextToken,
+    });
 
     const tweets = res.data?.data || [];
     totalReplies += tweets.length;
@@ -39,7 +36,7 @@ export async function countVotesForTweet(pollTweetId: string) {
 
       if (!authorId) continue;
 
-      // если уже голосовал — игнор
+      // If the user already voted — ignore
       if (voterSet.has(authorId)) continue;
 
       const vote = extractVote(text);
@@ -55,7 +52,7 @@ export async function countVotesForTweet(pollTweetId: string) {
 
   const totalVoters = voterSet.size;
 
-  log("INFO","Poll votes counted", { pollTweetId, totalReplies, totalVoters, counts });
+  log("INFO", "Poll votes counted", { pollTweetId, totalReplies, totalVoters, counts });
 
   return { counts, totalVoters, totalReplies };
 }
@@ -64,7 +61,7 @@ export function pickWinner(counts: Record<number, number>) {
   let winner = 1;
   let max = -1;
 
-  for (const k of [1,2,3,4,5]) {
+  for (const k of [1, 2, 3, 4, 5]) {
     const v = counts[k] || 0;
     if (v > max) {
       max = v;
