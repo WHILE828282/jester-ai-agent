@@ -7,6 +7,7 @@ import { tallyVotes } from "./pollVote.js";
 import { applyWinningOption, loadPollSpec, savePollSpec, PollSpec } from "./pollApply.js";
 import { MemoryStore } from "./memoryStore.js";
 import { normalizeWhitespace } from "./text.js";
+import { gitCommitAndPush } from "./pollCommit.js";
 
 type PollState = {
   pollId: string;
@@ -39,12 +40,6 @@ function ensureSpecExists() {
   const fp = path.resolve(CONFIG.paths.pollSpecFile);
   if (fs.existsSync(fp)) return;
 
-  // Дефолтный poll spec:
-  // 1) удалить правило no_apology
-  // 2) отключить правило no_disclaimer
-  // 3) добавить новое правило
-  // 4) увеличить длину твита
-  // 5) noop
   const spec: PollSpec = {
     pollId: `weekly_${new Date().toISOString().slice(0, 10)}`,
     createdAt: now(),
@@ -69,7 +64,7 @@ function ensureSpecExists() {
             rule: {
               id: "allow_hashtags",
               title: "Allow hashtags (soft)",
-              enabled: false,
+              enabled: true,
               type: "regex",
               value: "#",
               severity: "warn"
@@ -99,9 +94,7 @@ function buildPollTweet(spec: PollSpec) {
   lines.push("Pick ONE option. Comment a number (1-5).");
   lines.push("1 vote per account. Window: 24h.");
   lines.push("");
-  for (const o of spec.options) {
-    lines.push(`${o.num}) ${o.title}`);
-  }
+  for (const o of spec.options) lines.push(`${o.num}) ${o.title}`);
   lines.push("");
   lines.push("ribbit.");
 
@@ -134,9 +127,6 @@ async function postPollTweet(): Promise<PollState> {
 }
 
 async function fetchRepliesForTweet(tweetId: string) {
-  // Twitter v2 recent search query to get replies:
-  // conversation_id:tweetId is used to capture the thread conversation
-  // filter:replies ensures only replies
   const q = `conversation_id:${tweetId} is:reply`;
   const max = 100;
 
@@ -151,9 +141,7 @@ async function fetchRepliesForTweet(tweetId: string) {
     } as any);
 
     const data = resp?.data?.data ?? resp?.data ?? [];
-    for (const t of data) {
-      replies.push({ user_id: t.author_id, text: t.text });
-    }
+    for (const t of data) replies.push({ user_id: t.author_id, text: t.text });
 
     nextToken = resp?.meta?.next_token;
     if (!nextToken) break;
@@ -181,6 +169,7 @@ function writeGovernanceLog(state: PollState) {
     }
   }
   fs.writeFileSync(fp, lines.join("\n"), "utf-8");
+  return fp;
 }
 
 async function closePollAndApply(state: PollState) {
@@ -193,16 +182,16 @@ async function closePollAndApply(state: PollState) {
   state.counts = result.counts;
   state.voters = result.voters;
 
-  // Применяем изменения (удалить правило / отключить / т.п.)
+  // Apply change (rules.json updated)
   const apply = applyWinningOption(result.winner);
 
   state.applied = true;
   saveState(state);
 
-  // записываем лог
-  writeGovernanceLog(state);
+  // governance log
+  const govFile = writeGovernanceLog(state);
 
-  // сохраняем также в memory.json (чтобы было видно в проекте)
+  // memory meta
   const store = new MemoryStore();
   store.setMeta("last_poll", {
     pollId: state.pollId,
@@ -213,7 +202,7 @@ async function closePollAndApply(state: PollState) {
     applied: apply
   });
 
-  // делаем итоговый твит с результатом
+  // tweet summary reply
   const summary = `Poll closed. Winner: ${state.winner}. Votes: ${Object.entries(result.counts)
     .map(([k, v]) => `${k}:${v}`)
     .join(" ")} ribbit.`;
@@ -224,27 +213,43 @@ async function closePollAndApply(state: PollState) {
     log("WARN", "Failed to post poll summary reply", { error: String(e?.message ?? e) });
   }
 
+  // ✅ COMMIT + PUSH
+  try {
+    const commitRes = gitCommitAndPush({
+      message: `poll: ${state.pollId} winner=${state.winner}`,
+      addPaths: [
+        CONFIG.paths.rulesFile,
+        CONFIG.paths.memoryFile,
+        CONFIG.paths.pollStateFile,
+        CONFIG.paths.pollSpecFile,
+        govFile
+      ]
+    });
+    log("INFO", "Poll commit result", commitRes);
+  } catch (e: any) {
+    log("ERROR", "Failed to commit/push poll results", { error: String(e?.message ?? e) });
+  }
+
   log("INFO", "Poll applied", { winner: state.winner, applied: apply });
 }
 
 export async function runPoll() {
   let state = loadState();
 
-  // если нет активного poll -> создаём
+  // If no active poll or already applied -> create new
   if (!state || state.applied) {
     state = await postPollTweet();
     return;
   }
 
-  // если poll ещё идёт -> ничего не делаем
+  // If still open -> do nothing
   if (now() < state.closesAt) {
     log("INFO", "Poll still open", { closesAt: state.closesAt });
     return;
   }
 
-  // poll уже закрылся -> считаем и применяем
+  // Close + apply
   if (!state.applied) {
     await closePollAndApply(state);
-    return;
   }
 }
