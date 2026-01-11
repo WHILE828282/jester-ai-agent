@@ -7,18 +7,18 @@ export type Mode = "daily" | "reply" | "metrics" | "poll" | "agent_fix";
 const ROOT = process.cwd();
 const DATA_DIR = join(ROOT, "data");
 
-// ✅ Единый источник правды для путей
+// ✅ Single source of truth for paths
 export const PATHS = {
   ROOT,
   DATA_DIR,
 
-  // Верхний регистр — основной стиль
+  // UPPERCASE keys are the primary style
   MEMORY_FILE: join(DATA_DIR, "memory.json"),
   RULES_FILE: join(DATA_DIR, "rules.json"),
   POLL_SPEC_FILE: join(DATA_DIR, "pollSpec.json"),
   GOVERNANCE_DIR: join(DATA_DIR, "governance"),
 
-  // Низкий регистр — алиасы для обратной совместимости (если где-то использовалось)
+  // lowercase keys are backward-compat aliases (in case they were used somewhere)
   dataDir: join(DATA_DIR, ""),
   memoryFile: join(DATA_DIR, "memory.json"),
   rulesFile: join(DATA_DIR, "rules.json"),
@@ -40,7 +40,7 @@ function envInt(name: string, fallback: number) {
   return Number.isFinite(n) ? Math.floor(n) : fallback;
 }
 
-// ✅ Центральный конфиг (импортируется везде)
+// ✅ Central config (imported everywhere)
 export const CONFIG = {
   mode: (env("MODE", "daily") as Mode),
 
@@ -67,22 +67,22 @@ export const CONFIG = {
   },
 
   rules: {
-    // вот это поле у тебя и падало как undefined в одном из случаев
+    // this field used to be undefined in one of the cases
     rulesFile: env("RULES_FILE", PATHS.RULES_FILE)!,
 
-    // на будущее — если захочешь добавить лимиты/режимы правил
+    // future: if you want to add rule limits/modes
     maxRules: envInt("RULES_MAX", 200),
   },
 
   poll: {
-    // окно голосования (у тебя 24 часа)
+    // voting window (currently 24 hours)
     windowHours: envInt("POLL_WINDOW_HOURS", 24),
 
-    // варианты 1..5
+    // options 1..5
     minOption: envInt("POLL_MIN_OPTION", 1),
     maxOption: envInt("POLL_MAX_OPTION", 5),
   },
 
-  // Максимум реплаев за один запуск (workflow пробрасывает MAX_REPLIES_PER_RUN)
+  // Max replies per run (workflow passes MAX_REPLIES_PER_RUN)
   MAX_REPLIES_PER_RUN: envInt("MAX_REPLIES_PER_RUN", 8),
 };
