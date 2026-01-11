@@ -1,0 +1,23 @@
+name: Auto Merge PRs labeled "automerge"
+
+# Триггер при добавлении label'а и при обновлении/открытии PR
+on:
+  pull_request:
+    types: [labeled, opened, synchronize, reopened]
+
+jobs:
+  automerge:
+    name: Auto merge when label present and checks passed
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Auto merge PR when label 'automerge' present
+        uses: pascalgn/automerge-action@v0.15.4
+        with:
+          github_token: ${{ secrets.GH_PAT }}   # можно использовать ${{ secrets.GITHUB_TOKEN }}, но GH_PAT с нужными правами надёжнее
+          merge_method: merge                  # можно 'squash' или 'rebase' при желании
+          check_label: "automerge"             # объединяем только PR с этой меткой
