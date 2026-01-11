@@ -3,7 +3,7 @@ import { generateTweet } from "./generator.js";
 import { validateOutput, finalizeTweet } from "./guardrails.js";
 import { postTweet } from "./poster.js";
 import { log } from "./logger.js";
-import { normalizeWhitespace } from "./text.js";
+import { normalizeWhitespace, ensureRibbit } from "./text.js";
 function pickTopic(){ const topics=[{topic:"crypto market mood",context:"Write a joke about traders overreacting to small price moves."},{topic:"pump.fun chaos",context:"Write a joke about memecoin launches and the circus vibe."},{topic:"chart addiction",context:"Write a joke about people staring at charts 24/7 like it’s their job."},{topic:"diamond hands pain",context:"Write a joke about holding through dips and calling it 'strategy'."}]; return topics[Math.floor(Math.random()*topics.length)]; }
 export async function runDailyPost(){
   const store=new MemoryStore();
