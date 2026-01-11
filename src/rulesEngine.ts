@@ -37,7 +37,7 @@ function tryReadJson(p: string): any | null {
 }
 
 /**
- * We support BOTH locations because you said you have both:
+ * We support BOTH locations:
  * - data/rules.json (recommended)
  * - src/rules.json  (fallback)
  */
@@ -76,8 +76,7 @@ export function loadRulesFile(): RulesFile {
 }
 
 /**
- * Named export REQUIRED by your generator.ts import:
- *   import { buildSystemPrompt } from "./rulesEngine.js";
+ * buildSystemPrompt — используется генератором
  */
 export function buildSystemPrompt(extra?: { mode?: "tweet" | "reply" }): string {
   const rules = loadRulesFile();
@@ -121,15 +120,13 @@ export function buildSystemPrompt(extra?: { mode?: "tweet" | "reply" }): string 
   return lines.join("\n");
 }
 
-/* ----------------- New: applyGovernanceWinner ----------------- */
+/* ----------------- applyGovernanceWinner ----------------- */
 /**
  * Apply governance action strings, e.g.:
  * - "ADD_RULE:No emojis."
- * - "REMOVE_RULE:must_end_ribbit" or "REMOVE_RULE:end-ribbit" or "REMOVE_RULE:Always end with ribbit."
+ * - "REMOVE_RULE:must_end_ribbit" or "REMOVE_RULE:Always end with ribbit."
  *
- * This function mutates data/rules.json (preferred location). It is intentionally
- * permissive: ADD_RULE always adds to `style` section as a custom rule; REMOVE_RULE
- * will try to find an existing rule by id or title (slug match) and set enabled=false.
+ * Mutates data/rules.json (preferred). Returns { ok, action, details }.
  */
 function slugify(s: string) {
   return String(s || "")
@@ -145,12 +142,15 @@ function rulesFilePath(): string {
 function saveRulesFile(rules: RulesFile) {
   const p = rulesFilePath();
   fs.mkdirSync(path.dirname(p), { recursive: true });
-  // update metadata
   rules.version = (rules.version ?? 0) + 0;
   rules.updatedAt = new Date().toISOString();
   fs.writeFileSync(p, JSON.stringify(rules, null, 2), "utf-8");
 }
 
+/**
+ * Named export required by pollApply.ts:
+ *   import { applyGovernanceWinner } from "./rulesEngine.js";
+ */
 export function applyGovernanceWinner(actionStr: string): { ok: boolean; action?: string; details?: any } {
   if (!actionStr || typeof actionStr !== "string") {
     return { ok: false, action: "INVALID", details: { reason: "Empty action" } };
@@ -173,7 +173,7 @@ export function applyGovernanceWinner(actionStr: string): { ok: boolean; action?
       return { ok: false, action: "ADD_RULE", details: { reason: "No rule text provided" } };
     }
 
-    // make id unique
+    // create unique id
     let baseId = slugify(payload) || `rule-${Date.now()}`;
     let id = baseId;
     let suffix = 1;
@@ -220,7 +220,6 @@ export function applyGovernanceWinner(actionStr: string): { ok: boolean; action?
           slugify(rTitle) === targetSlug ||
           rId.includes(payload)
         ) {
-          // disable
           r.enabled = false;
           saveRulesFile(rules);
           return {
@@ -237,4 +236,3 @@ export function applyGovernanceWinner(actionStr: string): { ok: boolean; action?
     return { ok: false, action: "UNKNOWN", details: { reason: "Unknown command", command: cmd } };
   }
 }
-
