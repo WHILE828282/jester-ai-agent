@@ -1,16 +1,18 @@
-import { llm, MODEL } from "./openaiClient.js";
-import { buildSystemPrompt } from "./governance/rules.js";
+import { groq } from "./groqClient.js";
+import { CONFIG } from "./config.js";
+import { buildSystemPrompt } from "./guardrails.js";
 
-export async function generateText(prompt: string, extraSystem?: string) {
-  const system = buildSystemPrompt(extraSystem);
+export async function generateText(prompt: string, kind: "tweet" | "reply" = "tweet") {
+  const system = buildSystemPrompt(kind);
 
-  const resp = await llm.chat.completions.create({
-    model: MODEL,
+  const resp = await groq.chat.completions.create({
+    model: CONFIG.groq.model,
     messages: [
       { role: "system", content: system },
       { role: "user", content: prompt }
     ],
-    temperature: 1.0
+    temperature: CONFIG.groq.temperature,
+    max_tokens: CONFIG.groq.maxTokens
   });
 
   return resp.choices[0]?.message?.content ?? "";
@@ -25,16 +27,24 @@ export async function generateTweet(args: {
 }) {
   const { topic, context, successPatterns, failPatterns, recentPosts } = args;
 
-  const prompt = `Write ONE short rude clever meme-style joke tweet as an American frog mascot for a memecoin.
+  const prompt = `
+Write ONE short rude clever meme-style joke tweet.
 Topic: ${topic}
 Context: ${context}
-Avoid patterns: ${failPatterns.map(p => p.text).join(" | ")}
-Prefer patterns: ${successPatterns.map(p => p.text).join(" | ")}
-Don't repeat these posts: ${recentPosts.join(" || ")}
-Return only the final tweet.`;
 
-  // Extra system context specifically for tweets:
-  return generateText(prompt, "This output is a tweet. Keep it short and high-tempo.");
+Avoid patterns:
+${failPatterns.map((p) => `- ${p.text}`).join("\n")}
+
+Prefer patterns:
+${successPatterns.map((p) => `- ${p.text}`).join("\n")}
+
+Do not repeat:
+${recentPosts.slice(0, 10).join(" || ")}
+
+Return ONLY the tweet text.
+  `.trim();
+
+  return generateText(prompt, "tweet");
 }
 
 export async function generateReply(args: {
@@ -45,12 +55,19 @@ export async function generateReply(args: {
 }) {
   const { userText, lastPost, successPatterns, failPatterns } = args;
 
-  const prompt = `Reply as Jester to this user message:
+  const prompt = `
+Reply to this user on X in the same voice.
 User: "${userText}"
-Last Jester post: "${lastPost}"
-Avoid patterns: ${failPatterns.map(p => p.text).join(" | ")}
-Prefer patterns: ${successPatterns.map(p => p.text).join(" | ")}
-Reply in 1-2 sentences. Return only the reply.`;
+Last post: "${lastPost}"
 
-  return generateText(prompt, "This output is a reply tweet. Keep it snappy and direct.");
+Avoid patterns:
+${failPatterns.map((p) => `- ${p.text}`).join("\n")}
+
+Prefer patterns:
+${successPatterns.map((p) => `- ${p.text}`).join("\n")}
+
+Return ONLY the reply text.
+  `.trim();
+
+  return generateText(prompt, "reply");
 }
