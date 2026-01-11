@@ -83,7 +83,7 @@ Generate a patch.
 /* ----------------- Safety helpers ----------------- */
 
 function allowedPath(p: string) {
-  // разрешаем патчи только в этих директориях
+  // Allow patches only within these directories
   const allowed = [/^src\//, /^agent\//, /^data\//];
   const forbidden = [/^\.github\//, /^\.env$/, /^package-lock\.json$/, /^yarn.lock$/];
   if (forbidden.some((rx) => rx.test(p))) return false;
@@ -91,8 +91,9 @@ function allowedPath(p: string) {
 }
 
 function looksLikeSecret(s: string) {
-  // простая эвристика: common token prefixes / long base64 / GH token
-  const re = /(AKIA|AIza|ghp_[A-Za-z0-9]{36}|xox[baprs]-[A-Za-z0-9-]{20,}|-----BEGIN PRIVATE KEY-----|GROQ_API_KEY|GROQ_MODEL|X_APP_SECRET|X_ACCESS_SECRET)/;
+  // Simple heuristic: common token prefixes / long base64 / GH token
+  const re =
+    /(AKIA|AIza|ghp_[A-Za-z0-9]{36}|xox[baprs]-[A-Za-z0-9-]{20,}|-----BEGIN PRIVATE KEY-----|GROQ_API_KEY|GROQ_MODEL|X_APP_SECRET|X_ACCESS_SECRET)/;
   return re.test(s);
 }
 
@@ -131,7 +132,7 @@ ${initial.stderr}
     process.exit(1);
   }
 
-  // проверяем пути и секреты до применения
+  // Validate paths and detect secrets before applying
   for (const pf of patchFiles) {
     if (!allowedPath(pf.filePath)) {
       console.error("❌ Patch contains modifications to forbidden path:", pf.filePath);
@@ -143,7 +144,7 @@ ${initial.stderr}
     }
   }
 
-  // делаем резервную копию изменяемых файлов
+  // Backup modified files
   const backupDir = fs.mkdtempSync(path.join(PROJECT_ROOT, "agent", "backup-"));
   const createdFiles: string[] = [];
   const overwrittenFiles: string[] = [];
@@ -157,30 +158,32 @@ ${initial.stderr}
       fs.copyFileSync(fullPath, destBackup);
       overwrittenFiles.push(pf.filePath);
     } else {
-      // файл новый
+      // New file
       createdFiles.push(pf.filePath);
     }
   }
 
-  // применяем патч
+  // Apply patch
   console.log("🛠 Applying patch files...");
   applyPatchFiles(PROJECT_ROOT, patchFiles);
 
-  // запускаем тесты
+  // Run tests
   console.log("🧪 Running tests after patch...");
   const after = await runTests();
 
   if (!after.ok) {
     console.error("❌ Fix failed. Tests still failing. Reverting changes...");
-    // восстановим файлы из бэкапа
+    // Restore files from backup
     for (const pf of patchFiles) {
       const fullPath = path.join(PROJECT_ROOT, pf.filePath);
       const backed = path.join(backupDir, pf.filePath);
       if (fs.existsSync(backed)) {
         fs.copyFileSync(backed, fullPath);
       } else {
-        // новый файл — удалить
-        try { fs.unlinkSync(fullPath); } catch {}
+        // New file — delete
+        try {
+          fs.unlinkSync(fullPath);
+        } catch {}
       }
     }
     console.error(after.stderr);
@@ -199,7 +202,7 @@ ${initial.stderr}
   }
 
   // cleanup backup
-  // (можно оставить для аудита)
+  // (you may keep it for audit)
   // fs.rmSync(backupDir, { recursive: true, force: true });
 
   console.log("🎉 Done.");
