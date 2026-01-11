@@ -42,10 +42,10 @@ function envInt(name: string, fallback: number) {
 
 // ✅ Central config (imported everywhere)
 export const CONFIG = {
-  mode: (env("MODE", "daily") as Mode),
+  mode: env("MODE", "daily") as Mode,
 
   llm: {
-    provider: (env("LLM_PROVIDER", "groq") as "groq" | "openai"),
+    provider: env("LLM_PROVIDER", "groq") as "groq" | "openai",
     baseURL: env("LLM_BASE_URL", "https://api.groq.com/openai/v1")!,
     apiKey: env("GROQ_API_KEY") || env("LLM_API_KEY") || "",
     model: env("GROQ_MODEL", "llama-3.1-8b-instant")!,
