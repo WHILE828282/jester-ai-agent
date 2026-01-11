@@ -1,9 +1,9 @@
-name: Post Every 2 Hours
+name: Post Every 3 Hours
 
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 */2 * * *"   # каждые 2 часа (UTC)
+    - cron: "0 */3 * * *"   # каждые 3 часа (UTC)
 
 concurrency:
   group: jester-agent-global
