@@ -1,3 +1,4 @@
+// src/memoryStore.ts  (исправлённая версия)
 import fs from "node:fs";
 import path from "node:path";
 import { PATHS } from "./config.js";
@@ -24,11 +25,7 @@ type MemoryShape = {
     success: Pattern[];
     avoid: Pattern[];
   };
-  state: {
-    lastMentionId?: string;
-    lastRun?: number;
-    lastMetricsRun?: number;
-  };
+  state: Record<string, any>;
 };
 
 function ensureDir(p: string) {
@@ -56,26 +53,29 @@ const DEFAULT_MEMORY: MemoryShape = {
   state: {},
 };
 
+function toCamel(s: string) {
+  return s.replace(/_([a-z])/g, (_m, p1) => p1.toUpperCase());
+}
+
 export class MemoryStore {
   private mem: MemoryShape;
 
   constructor() {
-    // ✅ гарантируем data/ существует
-    ensureDir(PATHS.dataDir);
+    // PATHS names: use DATA_DIR and MEMORY_FILE (как в config.ts)
+    ensureDir(PATHS.DATA_DIR);
+    this.mem = safeReadJson<MemoryShape>(PATHS.MEMORY_FILE, DEFAULT_MEMORY);
 
-    // ✅ если memory.json нет — создаём
-    this.mem = safeReadJson<MemoryShape>(PATHS.memoryFile, DEFAULT_MEMORY);
     if (!this.mem.posts) this.mem.posts = [];
     if (!this.mem.patterns) this.mem.patterns = { success: [], avoid: [] };
     if (!this.mem.patterns.success) this.mem.patterns.success = [];
     if (!this.mem.patterns.avoid) this.mem.patterns.avoid = [];
     if (!this.mem.state) this.mem.state = {};
 
-    this.flush(); // закрепим корректную структуру на диске
+    this.flush();
   }
 
   flush() {
-    safeWriteJson(PATHS.memoryFile, this.mem);
+    safeWriteJson(PATHS.MEMORY_FILE, this.mem);
   }
 
   getRecentPosts(n = 10): MemoryPost[] {
@@ -84,7 +84,6 @@ export class MemoryStore {
 
   addPost(p: MemoryPost) {
     this.mem.posts.push({ ...p, ts: p.ts ?? Date.now() });
-    // ограничим историю чтобы не разрасталась бесконечно
     if (this.mem.posts.length > 300) this.mem.posts = this.mem.posts.slice(-300);
     this.flush();
   }
@@ -103,13 +102,31 @@ export class MemoryStore {
     this.flush();
   }
 
+  // Совместимый state API (getState/setState), плюс удобные методы
+  getState(key: string): any {
+    const camel = toCamel(key);
+    return this.mem.state[camel] ?? this.mem.state[key];
+  }
+
+  setState(key: string, value: any) {
+    const camel = toCamel(key);
+    this.mem.state[camel] = value;
+    this.flush();
+  }
+
+  // Старые/удобные методы — оставляем для обратной совместимости
   getLastMentionId(): string | undefined {
-    return this.mem.state.lastMentionId;
+    return this.mem.state.lastMentionId ?? this.mem.state.last_mention_id;
   }
 
   setLastMentionId(id: string) {
     this.mem.state.lastMentionId = id;
     this.flush();
+  }
+
+  getLastPost(): MemoryPost | undefined {
+    if (!this.mem.posts || this.mem.posts.length === 0) return undefined;
+    return this.mem.posts[this.mem.posts.length - 1];
   }
 
   markMetricsRun() {
