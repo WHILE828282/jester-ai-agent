@@ -1,48 +1,50 @@
+// src/config.ts
 import "dotenv/config";
 import path from "node:path";
 
-/**
- * Runtime paths (always resolved relative to project root in Actions + local).
- */
+const ROOT = process.cwd();
+
+function env(name: string, fallback = ""): string {
+  const v = process.env[name];
+  return (v && v.trim().length > 0) ? v.trim() : fallback;
+}
+
+function envInt(name: string, fallback: number): number {
+  const v = env(name, "");
+  const n = Number.parseInt(v, 10);
+  return Number.isFinite(n) ? n : fallback;
+}
+
 export const PATHS = {
-  dataDir: path.resolve(process.cwd(), "data"),
-  memoryFile: path.resolve(process.cwd(), "data", "memory.json"),
-  rulesFile: path.resolve(process.cwd(), "data", "rules.json"),
-  governanceDir: path.resolve(process.cwd(), "data", "governance"),
+  ROOT,
+  DATA_DIR: path.join(ROOT, "data"),
+  MEMORY: path.join(ROOT, "data", "memory.json"),
+  RULES: path.join(ROOT, "data", "rules.json"),
+  GOVERNANCE_DIR: path.join(ROOT, "data", "governance"),
 };
 
-/**
- * Global config values.
- * You can safely add new values here later.
- */
 export const CONFIG = {
-  botName: process.env.BOT_NAME ?? "Jester",
-  signature: process.env.BOT_SIGNATURE ?? "ribbit.",
+  MODE: env("MODE", "daily"),
 
-  // Groq / OpenAI compatible env (you already use Groq)
-  llmModel: process.env.GROQ_MODEL ?? process.env.OPENAI_MODEL ?? "llama-3.3-70b-versatile",
-  llmApiKey: process.env.GROQ_API_KEY ?? process.env.OPENAI_API_KEY ?? "",
+  // Groq via OpenAI-compatible SDK (у тебя так и было)
+  GROQ_API_KEY: env("GROQ_API_KEY"),
+  GROQ_MODEL: env("GROQ_MODEL", "llama-3.3-70b-versatile"),
 
-  // Rate & retry behavior
-  maxAttempts: Number(process.env.MAX_ATTEMPTS ?? "5"),
-  sleepOnFailSeconds: Number(process.env.SLEEP_ON_FAIL_SECONDS ?? "30"),
+  // X keys
+  X_APP_KEY: env("X_APP_KEY"),
+  X_APP_SECRET: env("X_APP_SECRET"),
+  X_ACCESS_TOKEN: env("X_ACCESS_TOKEN"),
+  X_ACCESS_SECRET: env("X_ACCESS_SECRET"),
 
-  // X schedule defaults (can override in actions later)
-  schedule: {
-    dailyPostEveryMinutes: Number(process.env.DAILY_POST_EVERY_MINUTES ?? "120"),
-    replyEveryMinutes: Number(process.env.REPLY_EVERY_MINUTES ?? "360"),
-    collectEveryMinutes: Number(process.env.COLLECT_EVERY_MINUTES ?? "15"),
-  },
+  // generation limits
+  MAX_TWEET_CHARS: envInt("MAX_TWEET_CHARS", 260),
+  MAX_REPLY_CHARS: envInt("MAX_REPLY_CHARS", 200),
+  TEMPERATURE: Number(env("TEMPERATURE", "1.0")),
 
-  // Safety limits
-  limits: {
-    maxTweetChars: Number(process.env.MAX_TWEET_CHARS ?? "240"),
-    maxReplyChars: Number(process.env.MAX_REPLY_CHARS ?? "200"),
-  },
+  // memory tuning
+  MAX_POSTS_IN_MEMORY: envInt("MAX_POSTS_IN_MEMORY", 200),
+  MAX_PATTERNS_IN_MEMORY: envInt("MAX_PATTERNS_IN_MEMORY", 300),
 
-  // Optional: GitHub patch agent settings (if enabled)
-  github: {
-    enabled: process.env.AGENT_GITHUB_ENABLED === "true",
-    branch: process.env.AGENT_BRANCH ?? "main",
-  },
+  // rules
+  RULES_MAX_ACTIVE: envInt("RULES_MAX_ACTIVE", 40),
 };
