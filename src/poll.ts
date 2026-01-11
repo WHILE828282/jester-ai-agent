@@ -1,255 +1,168 @@
-import fs from "fs";
-import path from "path";
+// src/poll.ts
 import { xClient } from "./xClient.js";
+import { postTweet } from "./poster.js";
 import { log } from "./logger.js";
-import { CONFIG } from "./config.js";
-import { tallyVotes } from "./pollVote.js";
-import { applyWinningOption, loadPollSpec, savePollSpec, PollSpec } from "./pollApply.js";
-import { MemoryStore } from "./memoryStore.js";
-import { normalizeWhitespace } from "./text.js";
-import { gitCommitAndPush } from "./pollCommit.js";
+import { loadPollSpec, savePollSpec, PollSpec, closeAndApply } from "./pollApply.js";
 
-type PollState = {
-  pollId: string;
-  tweetId: string;
-  createdAt: number;
-  closesAt: number;
-  applied?: boolean;
-  winner?: number;
-  counts?: Record<number, number>;
-  voters?: number;
-};
-
-function loadState(): PollState | null {
-  const fp = path.resolve(CONFIG.paths.pollStateFile);
-  if (!fs.existsSync(fp)) return null;
-  return JSON.parse(fs.readFileSync(fp, "utf-8"));
+function isoPlusHours(hours: number) {
+  return new Date(Date.now() + hours * 3600_000).toISOString();
 }
 
-function saveState(state: PollState) {
-  const fp = path.resolve(CONFIG.paths.pollStateFile);
-  fs.mkdirSync(path.dirname(fp), { recursive: true });
-  fs.writeFileSync(fp, JSON.stringify(state, null, 2), "utf-8");
-}
-
-function now() {
-  return Date.now();
-}
-
-function ensureSpecExists() {
-  const fp = path.resolve(CONFIG.paths.pollSpecFile);
-  if (fs.existsSync(fp)) return;
-
-  const spec: PollSpec = {
-    pollId: `weekly_${new Date().toISOString().slice(0, 10)}`,
-    createdAt: now(),
+function makeDefaultPollSpec(): PollSpec {
+  const now = new Date().toISOString();
+  return {
+    version: 1,
+    pollId: String(Date.now()),
+    createdAt: now,
+    closesAt: isoPlusHours(24),
+    status: "open",
     options: [
-      {
-        num: 1,
-        title: "Remove rule: No apologies",
-        action: { type: "delete_rule", ruleId: "no_apology" }
-      },
-      {
-        num: 2,
-        title: "Disable rule: No disclaimers",
-        action: { type: "disable_rule", ruleId: "no_disclaimer" }
-      },
-      {
-        num: 3,
-        title: "Add rule: Allow hashtags sometimes",
-        action: {
-          type: "add_rule",
-          payload: {
-            bucket: "style",
-            rule: {
-              id: "allow_hashtags",
-              title: "Allow hashtags (soft)",
-              enabled: true,
-              type: "regex",
-              value: "#",
-              severity: "warn"
-            }
-          }
-        }
-      },
-      {
-        num: 4,
-        title: "Increase max tweet length to 320",
-        action: { type: "set_value", path: "constraints.maxTweetChars", value: 320 }
-      },
-      {
-        num: 5,
-        title: "No changes this week",
-        action: { type: "noop" }
-      }
-    ]
+      { id: 1, text: "Add rule: no emojis", action: "ADD_RULE:No emojis." },
+      { id: 2, text: "Add rule: no hashtags unless needed", action: "ADD_RULE:No hashtags unless absolutely needed." },
+      { id: 3, text: "Remove rule: format-short", action: "REMOVE_RULE:format-short" },
+      { id: 4, text: "Remove rule: end-ribbit", action: "REMOVE_RULE:end-ribbit" },
+      { id: 5, text: "Add rule: replies more aggressive", action: "ADD_RULE:Replies should be more aggressive and punchy." },
+    ],
   };
+}
 
+/**
+ * Берём первую цифру 1..5 из текста (и только её считаем).
+ * "я за номер два потому что..." -> найдёт 2 если в тексте есть "2"
+ * Если человек пишет "2 2 2 2" -> всё равно это один голос (мы по пользователю уникализируем).
+ */
+function extractVote(text: string): number | null {
+  // ищем первую цифру 1..5
+  const m = text.match(/[1-5]/);
+  if (!m) return null;
+  const n = Number(m[0]);
+  if (n >= 1 && n <= 5) return n;
+  return null;
+}
+
+async function postPollTweet(spec: PollSpec) {
+  const lines: string[] = [];
+  lines.push("Weekly change vote. Comment a number 1–5.");
+  lines.push("");
+  for (const o of spec.options) {
+    lines.push(`${o.id}) ${o.text}`);
+  }
+  lines.push("");
+  lines.push("One vote per account. Voting closes in 24h. ribbit.");
+
+  const text = lines.join("\n");
+
+  const tweetId = await postTweet(text);
+  spec.tweetId = tweetId;
   savePollSpec(spec);
+
+  log("INFO", "Poll posted", { tweetId, pollId: spec.pollId, closesAt: spec.closesAt });
+  return tweetId;
 }
 
-function buildPollTweet(spec: PollSpec) {
-  const lines: string[] = [];
-  lines.push("WEEKLY GOV VOTE.");
-  lines.push("Pick ONE option. Comment a number (1-5).");
-  lines.push("1 vote per account. Window: 24h.");
-  lines.push("");
-  for (const o of spec.options) lines.push(`${o.num}) ${o.title}`);
-  lines.push("");
-  lines.push("ribbit.");
+/**
+ * Собираем ответы на твит (комменты) и считаем голоса:
+ * - 1 голос на userId
+ * - учитываем только первый валидный голос от пользователя
+ */
+async function collectVotes(tweetId: string) {
+  // twitter-api-v2: search replies можно так:
+  // мы ищем твиты "conversation_id:tweetId"
+  const query = `conversation_id:${tweetId}`;
 
-  return normalizeWhitespace(lines.join("\n")).slice(0, 260);
-}
-
-async function postPollTweet(): Promise<PollState> {
-  ensureSpecExists();
-  const spec = loadPollSpec();
-  const tweetText = buildPollTweet(spec);
-
-  log("INFO", "Posting weekly poll tweet");
-  const res = await xClient.v2.tweet(tweetText);
-  const tweetId = res.data.id;
-
-  const createdAt = now();
-  const closesAt = createdAt + CONFIG.poll.voteWindowHours * 60 * 60 * 1000;
-
-  const state: PollState = {
-    pollId: spec.pollId,
-    tweetId,
-    createdAt,
-    closesAt,
-    applied: false
-  };
-
-  saveState(state);
-  log("INFO", "Poll posted", { tweetId, closesAt });
-  return state;
-}
-
-async function fetchRepliesForTweet(tweetId: string) {
-  const q = `conversation_id:${tweetId} is:reply`;
-  const max = 100;
-
-  const replies: { user_id: string; text: string }[] = [];
-  let nextToken: string | undefined = undefined;
-
-  for (let page = 0; page < 5; page++) {
-    const resp: any = await xClient.v2.search(q, {
-      max_results: max,
-      next_token: nextToken,
-      "tweet.fields": ["author_id", "created_at"],
-    } as any);
-
-    const data = resp?.data?.data ?? resp?.data ?? [];
-    for (const t of data) replies.push({ user_id: t.author_id, text: t.text });
-
-    nextToken = resp?.meta?.next_token;
-    if (!nextToken) break;
-  }
-
-  return replies;
-}
-
-function writeGovernanceLog(state: PollState) {
-  const dir = path.resolve(CONFIG.paths.governanceDir);
-  fs.mkdirSync(dir, { recursive: true });
-
-  const fp = path.join(dir, `poll_${state.pollId}.md`);
-  const lines: string[] = [];
-  lines.push(`# Poll Result — ${state.pollId}`);
-  lines.push(`- Tweet: ${state.tweetId}`);
-  lines.push(`- Created: ${new Date(state.createdAt).toISOString()}`);
-  lines.push(`- Closed: ${new Date(state.closesAt).toISOString()}`);
-  lines.push(`- Voters counted: ${state.voters ?? 0}`);
-  lines.push(`- Winner: ${state.winner ?? "N/A"}`);
-  lines.push(`- Counts:`);
-  if (state.counts) {
-    for (const k of Object.keys(state.counts)) {
-      lines.push(`  - ${k}: ${state.counts[parseInt(k, 10)]}`);
-    }
-  }
-  fs.writeFileSync(fp, lines.join("\n"), "utf-8");
-  return fp;
-}
-
-async function closePollAndApply(state: PollState) {
-  log("INFO", "Closing poll", { tweetId: state.tweetId });
-
-  const replies = await fetchRepliesForTweet(state.tweetId);
-  const result = tallyVotes(replies, 5);
-
-  state.winner = result.winner;
-  state.counts = result.counts;
-  state.voters = result.voters;
-
-  // Apply change (rules.json updated)
-  const apply = applyWinningOption(result.winner);
-
-  state.applied = true;
-  saveState(state);
-
-  // governance log
-  const govFile = writeGovernanceLog(state);
-
-  // memory meta
-  const store = new MemoryStore();
-  store.setMeta("last_poll", {
-    pollId: state.pollId,
-    tweetId: state.tweetId,
-    winner: state.winner,
-    counts: state.counts,
-    voters: state.voters,
-    applied: apply
+  const paginator = await xClient.v2.search(query, {
+    "tweet.fields": ["author_id", "conversation_id", "created_at"],
+    max_results: 100,
   });
 
-  // tweet summary reply
-  const summary = `Poll closed. Winner: ${state.winner}. Votes: ${Object.entries(result.counts)
-    .map(([k, v]) => `${k}:${v}`)
-    .join(" ")} ribbit.`;
+  const seen = new Set<string>(); // author_id
+  const counts = new Map<number, number>();
+  const perUser = new Map<string, number>();
 
-  try {
-    await xClient.v2.tweet(summary.slice(0, 260), { reply: { in_reply_to_tweet_id: state.tweetId } } as any);
-  } catch (e: any) {
-    log("WARN", "Failed to post poll summary reply", { error: String(e?.message ?? e) });
+  for await (const tw of paginator) {
+    const author = tw.author_id;
+    if (!author) continue;
+    if (seen.has(author)) continue;
+
+    const vote = extractVote(tw.text ?? "");
+    if (!vote) continue;
+
+    seen.add(author);
+    perUser.set(author, vote);
+    counts.set(vote, (counts.get(vote) ?? 0) + 1);
   }
 
-  // ✅ COMMIT + PUSH
-  try {
-    const commitRes = gitCommitAndPush({
-      message: `poll: ${state.pollId} winner=${state.winner}`,
-      addPaths: [
-        CONFIG.paths.rulesFile,
-        CONFIG.paths.memoryFile,
-        CONFIG.paths.pollStateFile,
-        CONFIG.paths.pollSpecFile,
-        govFile
-      ]
-    });
-    log("INFO", "Poll commit result", commitRes);
-  } catch (e: any) {
-    log("ERROR", "Failed to commit/push poll results", { error: String(e?.message ?? e) });
-  }
-
-  log("INFO", "Poll applied", { winner: state.winner, applied: apply });
+  return { counts, perUser, totalVoters: seen.size };
 }
 
-export async function runPoll() {
-  let state = loadState();
+function pickWinner(counts: Map<number, number>): number | null {
+  let best: number | null = null;
+  let bestCount = -1;
 
-  // If no active poll or already applied -> create new
-  if (!state || state.applied) {
-    state = await postPollTweet();
+  for (const [k, v] of counts.entries()) {
+    if (v > bestCount) {
+      best = k;
+      bestCount = v;
+    } else if (v === bestCount && best !== null) {
+      // тай-брейк: меньший номер побеждает
+      if (k < best) best = k;
+    }
+  }
+
+  return best;
+}
+
+export async function runPoll(mode: "poll_post" | "poll_close") {
+  if (mode === "poll_post") {
+    const existing = loadPollSpec();
+    if (existing && existing.status === "open") {
+      log("WARN", "Poll already open; skip posting", { pollId: existing.pollId, tweetId: existing.tweetId });
+      return;
+    }
+    const spec = makeDefaultPollSpec();
+    await postPollTweet(spec);
     return;
   }
 
-  // If still open -> do nothing
-  if (now() < state.closesAt) {
-    log("INFO", "Poll still open", { closesAt: state.closesAt });
+  // mode === poll_close
+  const spec = loadPollSpec();
+  if (!spec) throw new Error("No poll.json found to close.");
+  if (spec.status !== "open") {
+    log("INFO", "Poll already closed; skip", { pollId: spec.pollId });
+    return;
+  }
+  if (!spec.tweetId) throw new Error("Poll is missing tweetId.");
+
+  // проверка времени закрытия
+  const now = Date.now();
+  const closeAt = new Date(spec.closesAt).getTime();
+  if (now < closeAt) {
+    log("INFO", "Poll not ready to close yet", { closesAt: spec.closesAt });
     return;
   }
 
-  // Close + apply
-  if (!state.applied) {
-    await closePollAndApply(state);
+  const { counts, totalVoters } = await collectVotes(spec.tweetId);
+  const winner = pickWinner(counts);
+
+  log("INFO", "Poll votes counted", {
+    pollId: spec.pollId,
+    tweetId: spec.tweetId,
+    totalVoters,
+    counts: Object.fromEntries([...counts.entries()].sort((a, b) => a[0] - b[0])),
+    winner,
+  });
+
+  if (!winner) {
+    // никто не проголосовал — закрываем без действия
+    spec.status = "closed";
+    spec.winner = {
+      optionId: -1,
+      decidedAt: new Date().toISOString(),
+      details: { ok: false, reason: "No votes" },
+    };
+    savePollSpec(spec);
+    return;
   }
+
+  closeAndApply(spec, winner);
 }
