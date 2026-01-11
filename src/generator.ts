@@ -1,14 +1,14 @@
 import { llm, MODEL } from "./openaiClient.js";
-import { buildSystemPrompt } from "./text.js";
+import { buildSystemPrompt } from "./governance/rules.js";
 
-export async function generateText(userPrompt: string, extraSystem?: string) {
+export async function generateText(prompt: string, extraSystem?: string) {
   const system = buildSystemPrompt(extraSystem);
 
   const resp = await llm.chat.completions.create({
     model: MODEL,
     messages: [
       { role: "system", content: system },
-      { role: "user", content: userPrompt }
+      { role: "user", content: prompt }
     ],
     temperature: 1.0
   });
@@ -25,27 +25,16 @@ export async function generateTweet(args: {
 }) {
   const { topic, context, successPatterns, failPatterns, recentPosts } = args;
 
-  const prompt = `
-Write ONE short rude clever meme-style joke tweet as Jester.
+  const prompt = `Write ONE short rude clever meme-style joke tweet as an American frog mascot for a memecoin.
 Topic: ${topic}
 Context: ${context}
+Avoid patterns: ${failPatterns.map(p => p.text).join(" | ")}
+Prefer patterns: ${successPatterns.map(p => p.text).join(" | ")}
+Don't repeat these posts: ${recentPosts.join(" || ")}
+Return only the final tweet.`;
 
-Avoid patterns:
-${failPatterns.map(p => `- ${p.text}`).join("\n")}
-
-Prefer patterns:
-${successPatterns.map(p => `- ${p.text}`).join("\n")}
-
-Don't repeat these recent posts:
-${recentPosts.map(p => `- ${p}`).join("\n")}
-
-Rules:
-- Under 240 chars
-- 1 tweet only
-- End with "ribbit."
-`.trim();
-
-  return generateText(prompt, `Task: write a tweet. Topic=${topic}`);
+  // Extra system context specifically for tweets:
+  return generateText(prompt, "This output is a tweet. Keep it short and high-tempo.");
 }
 
 export async function generateReply(args: {
@@ -56,23 +45,12 @@ export async function generateReply(args: {
 }) {
   const { userText, lastPost, successPatterns, failPatterns } = args;
 
-  const prompt = `
-Reply on X as Jester.
-
-User said: "${userText}"
+  const prompt = `Reply as Jester to this user message:
+User: "${userText}"
 Last Jester post: "${lastPost}"
+Avoid patterns: ${failPatterns.map(p => p.text).join(" | ")}
+Prefer patterns: ${successPatterns.map(p => p.text).join(" | ")}
+Reply in 1-2 sentences. Return only the reply.`;
 
-Avoid patterns:
-${failPatterns.map(p => `- ${p.text}`).join("\n")}
-
-Prefer patterns:
-${successPatterns.map(p => `- ${p.text}`).join("\n")}
-
-Rules:
-- 1-2 sentences max
-- Under 200 chars
-- End with "ribbit."
-`.trim();
-
-  return generateText(prompt, "Task: reply to a user mention.");
+  return generateText(prompt, "This output is a reply tweet. Keep it snappy and direct.");
 }
