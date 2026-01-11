@@ -1,67 +1,92 @@
-import fs from "fs";
-import path from "path";
+import fs from "node:fs";
+import path from "node:path";
 
-const RULES_PATH = path.join(process.cwd(), "src/governance/rules.json");
+export type RuleType = "hard" | "soft";
 
 export type Rule = {
   id: string;
-  text: string;
   enabled: boolean;
+  type: RuleType;
+  text: string;
+  priority: number;
 };
 
-export function loadRules(): Rule[] {
-  if (!fs.existsSync(RULES_PATH)) return [];
+export type RulesDoc = {
+  version: number;
+  updatedAt: string;
+  baseSystem: string;
+  rules: Rule[];
+};
+
+const RULES_PATH = path.join(process.cwd(), "src", "governance", "rules.json");
+
+export function loadRules(): RulesDoc {
   const raw = fs.readFileSync(RULES_PATH, "utf-8");
-  const json = JSON.parse(raw);
-  return json.rules ?? [];
+  return JSON.parse(raw) as RulesDoc;
 }
 
-export function saveRules(rules: Rule[]) {
-  fs.writeFileSync(RULES_PATH, JSON.stringify({ rules }, null, 2), "utf-8");
+export function getEnabledRulesSorted(doc: RulesDoc): Rule[] {
+  return doc.rules
+    .filter(r => r.enabled)
+    .sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
 }
 
-export function getEnabledRules(): Rule[] {
-  return loadRules().filter(r => r.enabled);
-}
+export function buildSystemPrompt(extra?: string): string {
+  const doc = loadRules();
+  const rules = getEnabledRulesSorted(doc);
 
-export function addRule(id: string, text: string) {
-  const rules = loadRules();
+  const hard = rules.filter(r => r.type === "hard");
+  const soft = rules.filter(r => r.type === "soft");
 
-  // если уже есть правило с таким id — просто включаем + обновляем текст
-  const existing = rules.find(r => r.id === id);
-  if (existing) {
-    existing.text = text;
-    existing.enabled = true;
-    saveRules(rules);
-    return;
+  const lines: string[] = [];
+  lines.push(doc.baseSystem.trim());
+  lines.push("");
+
+  if (hard.length) {
+    lines.push("HARD RULES (must follow):");
+    for (const r of hard) lines.push(`- ${r.text}`);
+    lines.push("");
   }
 
-  rules.push({ id, text, enabled: true });
-  saveRules(rules);
+  if (soft.length) {
+    lines.push("STYLE RULES (prefer):");
+    for (const r of soft) lines.push(`- ${r.text}`);
+    lines.push("");
+  }
+
+  if (extra && extra.trim().length) {
+    lines.push("EXTRA CONTEXT:");
+    lines.push(extra.trim());
+    lines.push("");
+  }
+
+  return lines.join("\n").trim();
 }
 
-export function disableRule(id: string) {
-  const rules = loadRules();
-  const rule = rules.find(r => r.id === id);
-  if (!rule) return false;
-  rule.enabled = false;
-  saveRules(rules);
-  return true;
+/**
+ * Allows governance to disable a rule by id.
+ */
+export function disableRule(ruleId: string): RulesDoc {
+  const doc = loadRules();
+  const idx = doc.rules.findIndex(r => r.id === ruleId);
+  if (idx >= 0) {
+    doc.rules[idx].enabled = false;
+    doc.updatedAt = new Date().toISOString();
+    fs.writeFileSync(RULES_PATH, JSON.stringify(doc, null, 2), "utf-8");
+  }
+  return doc;
 }
 
-export function enableRule(id: string) {
-  const rules = loadRules();
-  const rule = rules.find(r => r.id === id);
-  if (!rule) return false;
-  rule.enabled = true;
-  saveRules(rules);
-  return true;
-}
-
-export function removeRule(id: string) {
-  const rules = loadRules();
-  const before = rules.length;
-  const filtered = rules.filter(r => r.id !== id);
-  saveRules(filtered);
-  return filtered.length !== before;
+/**
+ * Allows governance to enable a rule by id.
+ */
+export function enableRule(ruleId: string): RulesDoc {
+  const doc = loadRules();
+  const idx = doc.rules.findIndex(r => r.id === ruleId);
+  if (idx >= 0) {
+    doc.rules[idx].enabled = true;
+    doc.updatedAt = new Date().toISOString();
+    fs.writeFileSync(RULES_PATH, JSON.stringify(doc, null, 2), "utf-8");
+  }
+  return doc;
 }
